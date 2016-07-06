@@ -9,7 +9,7 @@
 #define HAL_CONFIG_H_
 #include <stdint.h>
 
-#define ENC_INTERFACE_GPMC 0
+#define ENC_INTERFACE_PSP 0
 
 struct hal_enc_cfg {
 	char interface_type;

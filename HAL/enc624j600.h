@@ -29,6 +29,11 @@
 #ifndef _ENC624J600_H
 #define _ENC624J600_H
 
+
+#include "interface.h"
+#include "net.h"
+#include <sys/types.h>
+
 //Receive and transmit buffers
 #define ENC624J600_TX_BUFFER_START 0x0000
 #define ENC624J600_TX_BUFFER_STOP  0x17FE
@@ -439,6 +444,27 @@
 #define RSV_CARRIER_EVENT          0x00000004
 #define RSV_PACKET_IGNORED         0x00000001
 
+#define 	NIC_TYPE_ETHERNET	0
+#define 	ETH_MTU 			1518
+#define 	NO_ERROR			0
+#define 	ERROR_FAILURE 		-1
+#define		ETH_MAX_FRAME_SIZE	( ETH_MTU )
+typedef enum {
+	//for drives management
+	ERROR_ENC524_BEGIN = ERROR_BEGIN(HAL_ENC624),
+	ERROR_INVALID_PACKET,
+	ERROR_BUFFER_EMPTY,
+	ERROR_INVALID_LENGTH,
+
+	invalid_bus_type,
+	init_memory_invalid,
+	init_createclass_fail,
+
+
+
+
+}err_enc624_t;
+
 
 /**
  * @brief ENC624J600 driver context
@@ -450,32 +476,60 @@ typedef struct
 } Enc624j600Context;
 
 
+
+
+
+
+
+typedef struct NIC_drive
+{
+	uint16_t		nic_type;
+	uint16_t		mtu;
+
+	err_t 	( *Init)(NetInterface *interface);
+	void 	( *Tnit)(NetInterface *interface);
+	void 	( *EnableIrq)(NetInterface *interface);
+	void 	( *DisableIrq)(NetInterface *interface);
+	void 	( *EventHandler)(NetInterface *interface);
+	err_t 	( *SetMacFilter)(NetInterface *interface);
+	err_t 	( *SendPacket)(NetInterface *interface, const NetBuffer *buffer, size_t offset);
+
+
+	void 	*unkonw1;
+	void 	*unkonw2;
+	bool	bool_xx1;
+	bool	bool_xx2;
+	bool	bool_xx3;
+	char	rese;
+}NicDriver;
 //ENC624J600 driver
 extern const NicDriver enc624j600Driver;
 
 //ENC624J600 related functions
-error_t enc624j600Init(NetInterface *interface);
-error_t enc624j600SoftReset(NetInterface *interface);
+err_t enc624j600Init(NetInterface *interface);
+err_t enc624j600SoftReset(NetInterface *interface);
 
 void enc624j600Tick(NetInterface *interface);
 
 void enc624j600EnableIrq(NetInterface *interface);
 void enc624j600DisableIrq(NetInterface *interface);
-bool_t enc624j600IrqHandler(NetInterface *interface);
+bool enc624j600IrqHandler(NetInterface *interface);
 void enc624j600EventHandler(NetInterface *interface);
 
-error_t enc624j600SetMacFilter(NetInterface *interface);
+err_t enc624j600SetMacFilter(NetInterface *interface);
 
-error_t enc624j600SendPacket(NetInterface *interface,
+err_t enc624j600SendPacket(NetInterface *interface,
    const NetBuffer *buffer, size_t offset);
 
-error_t enc624j600ReceivePacket(NetInterface *interface,
+err_t enc624j600ReceivePacket(NetInterface *interface,
    uint8_t *buffer, size_t size, size_t *length);
 
 void enc624j600ConfigureDuplexMode(NetInterface *interface);
 
 void enc624j600WriteReg(NetInterface *interface, uint8_t address, uint16_t data);
 uint16_t enc624j600ReadReg(NetInterface *interface, uint8_t address);
+void enc624_PSP_WriteReg(NetInterface *interface, uint8_t address, uint16_t data);
+uint16_t enc624_PSP_ReadReg(NetInterface *interface, uint8_t address);
 
 void enc624j600WritePhyReg(NetInterface *interface, uint8_t address, uint16_t data);
 uint16_t enc624j600ReadPhyReg(NetInterface *interface, uint8_t address);
@@ -488,6 +542,8 @@ void enc624j600ReadBuffer(NetInterface *interface,
 
 void enc624j600SetBit(NetInterface *interface, uint8_t address, uint16_t mask);
 void enc624j600ClearBit(NetInterface *interface, uint8_t address, uint16_t mask);
+void enc624_PSP_SetBit(NetInterface *interface, uint8_t address, uint16_t mask);
+void enc624_PSP_ClearBit(NetInterface *interface, uint8_t address, uint16_t mask);
 
 uint32_t enc624j600CalcCrc(const void *data, size_t length);
 
