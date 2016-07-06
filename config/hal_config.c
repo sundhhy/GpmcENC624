@@ -8,5 +8,5 @@
 #include "hal_config.h"
 
 struct hal_enc_cfg Hal_enc_cfg = {
-		ENC_INTERFACE_GPMC,
+		ENC_INTERFACE_PSP,
 };

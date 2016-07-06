@@ -32,8 +32,19 @@
 //Dependencies
 //#include "core/net.h"
 #include "enc624j600.h"
-//#include "debug.h"
+#include "hal_config.h"
+#include "debug.h"
+#include <string.h>
+#include <unistd.h>
+#include "osAbstraction.h"
 
+//为两种接口形式分别提供读写寄存器的方法
+void ( *WriteReg[2])(NetInterface *interface, uint8_t address, uint16_t data);
+void ( *SetBit[2])(NetInterface *interface, uint8_t address, uint16_t mask);
+void ( *ClearBit[2])(NetInterface *interface, uint8_t address, uint16_t mask);
+uint16_t ( *ReadReg[2])(NetInterface *interface, uint8_t address);
+
+int I_type = 0;		//接口类型
 
 /**
  * @brief ENC624J600 driver
@@ -57,24 +68,55 @@ const NicDriver enc624j600Driver =
    TRUE
 };
 
+MacAddr_u16	MAC_UNSPECIFIED_ADDR = { { 0, 0, 0}};
 
+IBusDrive				*ENC624_Bus;
+Drive_Gpmc			*Drive_PSPDriver;
+Drive_Gpio			*Drive_extIntDriver;
 /**
  * @brief ENC624J600 controller initialization
  * @param[in] interface Underlying network interface
  * @return Error code
  **/
 
-error_t enc624j600Init(NetInterface *interface)
+err_t enc624j600Init(NetInterface *interface)
 {
    Enc624j600Context *context;
+
 
    //Debug message
    TRACE_INFO("Initializing ENC624J600 Ethernet controller...\r\n");
 
+   //ENC接口连接到GPMC总线和GPIO中断引脚
+
+   if( Hal_enc_cfg.interface_type == ENC_INTERFACE_PSP)
+   {
+	   Drive_PSPDriver = Drive_Gpmc_new();
+	   if( Drive_PSPDriver == NULL)
+		   return ERROR_T(init_memory_invalid);
+//	   interface->busDriver = SUPER_PTR(Drive_PSPDriver, IBusDrive);
+	   interface->busDriver = Drive_PSPDriver;
+	   WriteReg[ ENC_INTERFACE_PSP] = enc624_PSP_WriteReg;
+	   ReadReg[ ENC_INTERFACE_PSP] = enc624_PSP_ReadReg;
+	   SetBit[ ENC_INTERFACE_PSP] = enc624_PSP_SetBit;
+	   ClearBit[ ENC_INTERFACE_PSP] = enc624_PSP_ClearBit;
+
+   }
+   else {
+	   return ERROR_T(invalid_bus_type);
+   }
+   I_type = Hal_enc_cfg.interface_type;
+   Drive_extIntDriver = Drive_Gpio_new();
+   if( Drive_PSPDriver == NULL)
+	   goto err_extInt;
+//   interface->extIntDriver =  SUPER_PTR(Drive_extIntDriver, IExternIntr);
+   interface->extIntDriver = Drive_extIntDriver;
+
+
    //Initialize SPI
-   interface->spiDriver->init();
+   interface->busDriver->init( interface->busDriver, &interface->instance);
    //Initialize external interrupt line
-   interface->extIntDriver->init();
+   interface->extIntDriver->init( interface->extIntDriver);
 
    //Point to the driver context
    context = (Enc624j600Context *) interface->nicContext;
@@ -85,59 +127,59 @@ error_t enc624j600Init(NetInterface *interface)
    enc624j600SoftReset(interface);
 
    //Disable CLKOUT output
-   enc624j600WriteReg(interface, ENC624J600_REG_ECON2, ECON2_ETHEN | ECON2_STRCH);
+   WriteReg[I_type](interface, ENC624J600_REG_ECON2, ECON2_ETHEN | ECON2_STRCH);
 
    //Optionally set the station MAC address
-   if(macCompAddr(&interface->macAddr, &MAC_UNSPECIFIED_ADDR))
+   if(macCompAddr(&interface->macAddr, &MAC_UNSPECIFIED_ADDR) == 0)
    {
       //Use the factory preprogrammed station address
-      interface->macAddr.w[0] = enc624j600ReadReg(interface, ENC624J600_REG_MAADR1);
-      interface->macAddr.w[1] = enc624j600ReadReg(interface, ENC624J600_REG_MAADR2);
-      interface->macAddr.w[2] = enc624j600ReadReg(interface, ENC624J600_REG_MAADR3);
+      interface->macAddr.w[0] = ReadReg[ I_type](interface, ENC624J600_REG_MAADR1);
+      interface->macAddr.w[1] = ReadReg[ I_type](interface, ENC624J600_REG_MAADR2);
+      interface->macAddr.w[2] = ReadReg[ I_type](interface, ENC624J600_REG_MAADR3);
    }
    else
    {
       //Override the factory preprogrammed address
-      enc624j600WriteReg(interface, ENC624J600_REG_MAADR1, interface->macAddr.w[0]);
-      enc624j600WriteReg(interface, ENC624J600_REG_MAADR2, interface->macAddr.w[1]);
-      enc624j600WriteReg(interface, ENC624J600_REG_MAADR3, interface->macAddr.w[2]);
+      WriteReg[I_type](interface, ENC624J600_REG_MAADR1, interface->macAddr.w[0]);
+      WriteReg[I_type](interface, ENC624J600_REG_MAADR2, interface->macAddr.w[1]);
+      WriteReg[I_type](interface, ENC624J600_REG_MAADR3, interface->macAddr.w[2]);
    }
 
    //Set receive buffer location
-   enc624j600WriteReg(interface, ENC624J600_REG_ERXST, ENC624J600_RX_BUFFER_START);
+   WriteReg[I_type](interface, ENC624J600_REG_ERXST, ENC624J600_RX_BUFFER_START);
    //Program the tail pointer ERXTAIL to the last even address of the buffer
-   enc624j600WriteReg(interface, ENC624J600_REG_ERXTAIL, ENC624J600_RX_BUFFER_STOP);
+   WriteReg[I_type](interface, ENC624J600_REG_ERXTAIL, ENC624J600_RX_BUFFER_STOP);
 
    //Configure the receive filters
-   enc624j600WriteReg(interface, ENC624J600_REG_ERXFCON, ERXFCON_HTEN |
+   WriteReg[I_type](interface, ENC624J600_REG_ERXFCON, ERXFCON_HTEN |
       ERXFCON_CRCEN | ERXFCON_RUNTEN | ERXFCON_UCEN | ERXFCON_BCEN);
 
    //Initialize the hash table
-   enc624j600WriteReg(interface, ENC624J600_REG_EHT1, 0x0000);
-   enc624j600WriteReg(interface, ENC624J600_REG_EHT2, 0x0000);
-   enc624j600WriteReg(interface, ENC624J600_REG_EHT3, 0x0000);
-   enc624j600WriteReg(interface, ENC624J600_REG_EHT4, 0x0000);
+   WriteReg[I_type](interface, ENC624J600_REG_EHT1, 0x0000);
+   WriteReg[I_type](interface, ENC624J600_REG_EHT2, 0x0000);
+   WriteReg[I_type](interface, ENC624J600_REG_EHT3, 0x0000);
+   WriteReg[I_type](interface, ENC624J600_REG_EHT4, 0x0000);
 
    //All short frames will be zero-padded to 60 bytes and a valid CRC is then appended
-   enc624j600WriteReg(interface, ENC624J600_REG_MACON2,
+   WriteReg[I_type](interface, ENC624J600_REG_MACON2,
       MACON2_DEFER | MACON2_PADCFG0 | MACON2_TXCRCEN | MACON2_R1);
 
    //Program the MAMXFL register with the maximum frame length to be accepted
-   enc624j600WriteReg(interface, ENC624J600_REG_MAMXFL, 1518);
+   WriteReg[I_type](interface, ENC624J600_REG_MAMXFL, 1518);
 
    //PHY initialization
    enc624j600WritePhyReg(interface, ENC624J600_PHY_REG_PHANA, PHANA_ADPAUS0 |
       PHANA_AD100FD | PHANA_AD100 | PHANA_AD10FD | PHANA_AD10 | PHANA_ADIEEE0);
 
    //Clear interrupt flags
-   enc624j600WriteReg(interface, ENC624J600_REG_EIR, 0x0000);
+   WriteReg[I_type](interface, ENC624J600_REG_EIR, 0x0000);
 
    //Configure interrupts as desired
-   enc624j600WriteReg(interface, ENC624J600_REG_EIE, EIE_INTIE |
+   WriteReg[I_type](interface, ENC624J600_REG_EIE, EIE_INTIE |
       EIE_LINKIE | EIE_PKTIE | EIE_TXIE | EIE_TXABTIE);
 
    //Set RXEN to enable reception
-   enc624j600SetBit(interface, ENC624J600_REG_ECON1, ECON1_RXEN);
+   SetBit[ I_type](interface, ENC624J600_REG_ECON1, ECON1_RXEN);
 
    //Dump registers for debugging purpose
    enc624j600DumpReg(interface);
@@ -150,6 +192,12 @@ error_t enc624j600Init(NetInterface *interface)
 
    //Successful initialization
    return NO_ERROR;
+
+err_extInt :
+	interface->busDriver = NULL;
+	free(Drive_PSPDriver);
+	return ERROR_T(init_createclass_fail);
+
 }
 
 
@@ -159,35 +207,37 @@ error_t enc624j600Init(NetInterface *interface)
  * @return Error code
  **/
 
-error_t enc624j600SoftReset(NetInterface *interface)
+err_t enc624j600SoftReset(NetInterface *interface)
 {
    //Wait for the SPI interface to be ready
    do
    {
       //Write 0x1234 to EUDAST
-      enc624j600WriteReg(interface, ENC624J600_REG_EUDAST, 0x1234);
+      WriteReg[I_type](interface, ENC624J600_REG_EUDAST, 0x5a5a);
       //Read back register and check contents
-   } while(enc624j600ReadReg(interface, ENC624J600_REG_EUDAST) != 0x1234);
+   } while(ReadReg[ I_type](interface, ENC624J600_REG_EUDAST) != 0x5a5a);
+//      delay(1);
+//   }while(1);
 
    //Poll CLKRDY and wait for it to become set
-   while(!(enc624j600ReadReg(interface, ENC624J600_REG_ESTAT) & ESTAT_CLKRDY));
+   while(!(ReadReg[ I_type](interface, ENC624J600_REG_ESTAT) & ESTAT_CLKRDY));
 
    //Issue a system reset command by setting ETHRST
-   enc624j600SetBit(interface, ENC624J600_REG_ECON2, ECON2_ETHRST);
+   SetBit[ I_type](interface, ENC624J600_REG_ECON2, ECON2_ETHRST);
    //Wait at least 25us for the reset to take place
    sleep(1);
 
    //Read EUDAST to confirm that the system reset took place.
    //EUDAST should have reverted back to its reset default
-   if(enc624j600ReadReg(interface, ENC624J600_REG_EUDAST) != 0x0000)
-      return ERROR_FAILURE;
+   if(ReadReg[ I_type](interface, ENC624J600_REG_EUDAST) != 0x0000)
+      return EXIT_FAILURE;
 
    //Wait at least 256us for the PHY registers and PHY
    //status bits to become available
    sleep(1);
 
    //The controller is now ready to accept further commands
-   return NO_ERROR;
+   return EXIT_SUCCESS;
 }
 
 
@@ -209,7 +259,7 @@ void enc624j600Tick(NetInterface *interface)
 void enc624j600EnableIrq(NetInterface *interface)
 {
    //Enable interrupts
-   interface->extIntDriver->enableIrq();
+   interface->extIntDriver->enableIrq( interface->extIntDriver);
 }
 
 
@@ -221,7 +271,7 @@ void enc624j600EnableIrq(NetInterface *interface)
 void enc624j600DisableIrq(NetInterface *interface)
 {
    //Disable interrupts
-   interface->extIntDriver->disableIrq();
+   interface->extIntDriver->disableIrq( interface->extIntDriver);
 }
 
 
@@ -231,25 +281,25 @@ void enc624j600DisableIrq(NetInterface *interface)
  * @return TRUE if a higher priority task must be woken. Else FALSE is returned
  **/
 
-bool_t enc624j600IrqHandler(NetInterface *interface)
+bool enc624j600IrqHandler(NetInterface *interface)
 {
-   bool_t flag;
+   bool flag;
    uint16_t status;
 
    //This flag will be set if a higher priority task must be woken
    flag = FALSE;
 
    //Clear the INTIE bit, immediately after an interrupt event
-   enc624j600ClearBit(interface, ENC624J600_REG_EIE, EIE_INTIE);
+   ClearBit[ I_type](interface, ENC624J600_REG_EIE, EIE_INTIE);
 
    //Read interrupt status register
-   status = enc624j600ReadReg(interface, ENC624J600_REG_EIR);
+   status = ReadReg[ I_type](interface, ENC624J600_REG_EIR);
 
    //Link status change?
    if(status & EIR_LINKIF)
    {
       //Disable LINKIE interrupt
-      enc624j600ClearBit(interface, ENC624J600_REG_EIE, EIE_LINKIE);
+      ClearBit[ I_type](interface, ENC624J600_REG_EIE, EIE_LINKIE);
       //Notify the user that the link state has changed
       flag |= osSetEventFromIsr(&interface->nicRxEvent);
    }
@@ -257,7 +307,7 @@ bool_t enc624j600IrqHandler(NetInterface *interface)
    if(status & EIR_PKTIF)
    {
       //Disable PKTIE interrupt
-      enc624j600ClearBit(interface, ENC624J600_REG_EIE, EIE_PKTIE);
+      ClearBit[ I_type](interface, ENC624J600_REG_EIE, EIE_PKTIE);
       //Notify the user that a packet has been received
       flag |= osSetEventFromIsr(&interface->nicRxEvent);
    }
@@ -267,12 +317,12 @@ bool_t enc624j600IrqHandler(NetInterface *interface)
       //Notify the user that the transmitter is ready to send
       flag |= osSetEventFromIsr(&interface->nicTxEvent);
       //Clear interrupt flag
-      enc624j600ClearBit(interface, ENC624J600_REG_EIR, EIR_TXIF | EIR_TXABTIF);
+      ClearBit[ I_type](interface, ENC624J600_REG_EIR, EIR_TXIF | EIR_TXABTIF);
    }
 
    //Once the interrupt has been serviced, the INTIE bit
    //is set again to re-enable interrupts
-   enc624j600SetBit(interface, ENC624J600_REG_EIE, EIE_INTIE);
+   SetBit[ I_type](interface, ENC624J600_REG_EIE, EIE_INTIE);
 
    //A higher priority task must be woken?
    return flag;
@@ -286,20 +336,20 @@ bool_t enc624j600IrqHandler(NetInterface *interface)
 
 void enc624j600EventHandler(NetInterface *interface)
 {
-   error_t error;
+   err_t error;
    uint16_t status;
    size_t length;
 
    //Read interrupt status register
-   status = enc624j600ReadReg(interface, ENC624J600_REG_EIR);
+   status = ReadReg[ I_type](interface, ENC624J600_REG_EIR);
 
    //Check whether the link state has changed
    if(status & EIR_LINKIF)
    {
       //Clear interrupt flag
-      enc624j600ClearBit(interface, ENC624J600_REG_EIR, EIR_LINKIF);
+      ClearBit[ I_type](interface, ENC624J600_REG_EIR, EIR_LINKIF);
       //Read Ethernet status register
-      status = enc624j600ReadReg(interface, ENC624J600_REG_ESTAT);
+      status = ReadReg[ I_type](interface, ENC624J600_REG_ESTAT);
 
       //Check link state
       if(status & ESTAT_PHYLNK)
@@ -334,13 +384,13 @@ void enc624j600EventHandler(NetInterface *interface)
       }
 
       //Process link state change event
-      nicNotifyLinkChange(interface);
+      nicNotifyLinkChange(interface);			//sundh: delay
    }
    //Check whether a packet has been received?
    if(status & EIR_PKTIF)
    {
       //Clear interrupt flag
-      enc624j600ClearBit(interface, ENC624J600_REG_EIR, EIR_PKTIF);
+      ClearBit[ I_type](interface, ENC624J600_REG_EIR, EIR_PKTIF);
 
       //Process all pending packets
       do
@@ -361,7 +411,7 @@ void enc624j600EventHandler(NetInterface *interface)
    }
 
    //Re-enable LINKIE and PKTIE interrupts
-   enc624j600SetBit(interface, ENC624J600_REG_EIE, EIE_LINKIE | EIE_PKTIE);
+   SetBit[ I_type](interface, ENC624J600_REG_EIE, EIE_LINKIE | EIE_PKTIE);
 }
 
 
@@ -371,7 +421,7 @@ void enc624j600EventHandler(NetInterface *interface)
  * @return Error code
  **/
 
-error_t enc624j600SetMacFilter(NetInterface *interface)
+err_t enc624j600SetMacFilter(NetInterface *interface)
 {
    uint_t i;
    uint_t k;
@@ -397,16 +447,16 @@ error_t enc624j600SetMacFilter(NetInterface *interface)
    }
 
    //Write the hash table to the ENC624J600 controller
-   enc624j600WriteReg(interface, ENC624J600_REG_EHT1, hashTable[0]);
-   enc624j600WriteReg(interface, ENC624J600_REG_EHT2, hashTable[1]);
-   enc624j600WriteReg(interface, ENC624J600_REG_EHT3, hashTable[2]);
-   enc624j600WriteReg(interface, ENC624J600_REG_EHT4, hashTable[3]);
+   WriteReg[I_type](interface, ENC624J600_REG_EHT1, hashTable[0]);
+   WriteReg[I_type](interface, ENC624J600_REG_EHT2, hashTable[1]);
+   WriteReg[I_type](interface, ENC624J600_REG_EHT3, hashTable[2]);
+   WriteReg[I_type](interface, ENC624J600_REG_EHT4, hashTable[3]);
 
    //Debug message
-   TRACE_INFO("  EHT1 = %04" PRIX16 "\r\n", enc624j600ReadReg(interface, ENC624J600_REG_EHT1));
-   TRACE_INFO("  EHT2 = %04" PRIX16 "\r\n", enc624j600ReadReg(interface, ENC624J600_REG_EHT2));
-   TRACE_INFO("  EHT3 = %04" PRIX16 "\r\n", enc624j600ReadReg(interface, ENC624J600_REG_EHT3));
-   TRACE_INFO("  EHT4 = %04" PRIX16 "\r\n", enc624j600ReadReg(interface, ENC624J600_REG_EHT4));
+   TRACE_INFO("  EHT1 = %04x \" PRIX16 \"\r\n", ReadReg[ I_type](interface, ENC624J600_REG_EHT1));
+   TRACE_INFO("  EHT2 = %04x \" PRIX16 \"\r\n", ReadReg[ I_type](interface, ENC624J600_REG_EHT2));
+   TRACE_INFO("  EHT3 = %04x \" PRIX16 \"\r\n", ReadReg[ I_type](interface, ENC624J600_REG_EHT3));
+   TRACE_INFO("  EHT4 = %04x \" PRIX16 \"\r\n", ReadReg[ I_type](interface, ENC624J600_REG_EHT4));
 
    //Successful processing
    return NO_ERROR;
@@ -421,7 +471,7 @@ error_t enc624j600SetMacFilter(NetInterface *interface)
  * @return Error code
  **/
 
-error_t enc624j600SendPacket(NetInterface *interface,
+err_t enc624j600SendPacket(NetInterface *interface,
    const NetBuffer *buffer, size_t offset)
 {
    size_t length;
@@ -435,7 +485,7 @@ error_t enc624j600SendPacket(NetInterface *interface,
       //The transmitter can accept another packet
       osSetEvent(&interface->nicTxEvent);
       //Report an error
-      return ERROR_INVALID_LENGTH;
+      return ERROR_T( ERROR_INVALID_LENGTH);
    }
 
    //Make sure the link is up before transmitting the frame
@@ -448,23 +498,23 @@ error_t enc624j600SendPacket(NetInterface *interface,
    }
 
    //Ensure that the transmitter is ready to send
-   if(enc624j600ReadReg(interface, ENC624J600_REG_ECON1) & ECON1_TXRTS)
+   if(ReadReg[ I_type](interface, ENC624J600_REG_ECON1) & ECON1_TXRTS)
       return ERROR_FAILURE;
 
    //Point to the SRAM buffer
-   enc624j600WriteReg(interface, ENC624J600_REG_EGPWRPT, ENC624J600_TX_BUFFER_START);
+   WriteReg[I_type](interface, ENC624J600_REG_EGPWRPT, ENC624J600_TX_BUFFER_START);
    //Copy the packet to the SRAM buffer
    enc624j600WriteBuffer(interface, ENC624J600_CMD_WGPDATA, buffer, offset);
 
    //Program ETXST to the start address of the packet
-   enc624j600WriteReg(interface, ENC624J600_REG_ETXST, ENC624J600_TX_BUFFER_START);
+   WriteReg[I_type](interface, ENC624J600_REG_ETXST, ENC624J600_TX_BUFFER_START);
    //Program ETXLEN with the length of data copied to the memory
-   enc624j600WriteReg(interface, ENC624J600_REG_ETXLEN, length);
+   WriteReg[I_type](interface, ENC624J600_REG_ETXLEN, length);
 
    //Clear TXIF and TXABTIF interrupt flags
-   enc624j600ClearBit(interface, ENC624J600_REG_EIR, EIR_TXIF | EIR_TXABTIF);
+   ClearBit[ I_type](interface, ENC624J600_REG_EIR, EIR_TXIF | EIR_TXABTIF);
    //Set the TXRTS bit to initiate transmission
-   enc624j600SetBit(interface, ENC624J600_REG_ECON1, ECON1_TXRTS);
+   SetBit[ I_type](interface, ENC624J600_REG_ECON1, ECON1_TXRTS);
 
    //Successful processing
    return NO_ERROR;
@@ -480,10 +530,10 @@ error_t enc624j600SendPacket(NetInterface *interface,
  * @return Error code
  **/
 
-error_t enc624j600ReceivePacket(NetInterface *interface,
+err_t enc624j600ReceivePacket(NetInterface *interface,
    uint8_t *buffer, size_t size, size_t *length)
 {
-   error_t error;
+   err_t error;
    uint16_t n;
    uint32_t status;
    Enc624j600Context *context;
@@ -492,10 +542,10 @@ error_t enc624j600ReceivePacket(NetInterface *interface,
    context = (Enc624j600Context *) interface->nicContext;
 
    //Verify that a packet is waiting by ensuring that PKTCNT is non-zero
-   if(enc624j600ReadReg(interface, ENC624J600_REG_ESTAT) & ESTAT_PKTCNT)
+   if(ReadReg[ I_type](interface, ENC624J600_REG_ESTAT) & ESTAT_PKTCNT)
    {
       //Point to the next packet
-      enc624j600WriteReg(interface, ENC624J600_REG_ERXRDPT, context->nextPacketPointer);
+      WriteReg[I_type](interface, ENC624J600_REG_ERXRDPT, context->nextPacketPointer);
       //Read the first two bytes, which are the address of the next packet
       enc624j600ReadBuffer(interface, ENC624J600_CMD_RRXDATA, (uint8_t *) &context->nextPacketPointer, 2);
       //Get the length of the received frame in bytes
@@ -526,12 +576,12 @@ error_t enc624j600ReceivePacket(NetInterface *interface,
       //has been processed, taking care to wrap back at the end of the
       //received memory buffer
       if(context->nextPacketPointer == ENC624J600_RX_BUFFER_START)
-         enc624j600WriteReg(interface, ENC624J600_REG_ERXTAIL, ENC624J600_RX_BUFFER_STOP);
+         WriteReg[I_type](interface, ENC624J600_REG_ERXTAIL, ENC624J600_RX_BUFFER_STOP);
       else
-         enc624j600WriteReg(interface, ENC624J600_REG_ERXTAIL, context->nextPacketPointer - 2);
+         WriteReg[I_type](interface, ENC624J600_REG_ERXTAIL, context->nextPacketPointer - 2);
 
       //Set PKTDEC to decrement the PKTCNT bits
-      enc624j600SetBit(interface, ENC624J600_REG_ECON1, ECON1_PKTDEC);
+      SetBit[ I_type](interface, ENC624J600_REG_ECON1, ECON1_PKTDEC);
    }
    else
    {
@@ -554,25 +604,25 @@ void enc624j600ConfigureDuplexMode(NetInterface *interface)
    uint16_t duplexMode;
 
    //Determine the new duplex mode by reading the PHYDPX bit
-   duplexMode = enc624j600ReadReg(interface, ENC624J600_REG_ESTAT) & ESTAT_PHYDPX;
+   duplexMode = ReadReg[ I_type](interface, ENC624J600_REG_ESTAT) & ESTAT_PHYDPX;
 
    //Full-duplex mode?
    if(duplexMode)
    {
       //Configure the FULDPX bit to match the current duplex mode
-      enc624j600WriteReg(interface, ENC624J600_REG_MACON2, MACON2_DEFER |
+      WriteReg[I_type](interface, ENC624J600_REG_MACON2, MACON2_DEFER |
          MACON2_PADCFG2 | MACON2_PADCFG0 | MACON2_TXCRCEN | MACON2_R1 | MACON2_FULDPX);
       //Configure the Back-to-Back Inter-Packet Gap register
-      enc624j600WriteReg(interface, ENC624J600_REG_MABBIPG, 0x15);
+      WriteReg[I_type](interface, ENC624J600_REG_MABBIPG, 0x15);
    }
    //Half-duplex mode?
    else
    {
       //Configure the FULDPX bit to match the current duplex mode
-      enc624j600WriteReg(interface, ENC624J600_REG_MACON2, MACON2_DEFER |
+      WriteReg[I_type](interface, ENC624J600_REG_MACON2, MACON2_DEFER |
          MACON2_PADCFG2 | MACON2_PADCFG0 | MACON2_TXCRCEN | MACON2_R1);
       //Configure the Back-to-Back Inter-Packet Gap register
-      enc624j600WriteReg(interface, ENC624J600_REG_MABBIPG, 0x12);
+      WriteReg[I_type](interface, ENC624J600_REG_MABBIPG, 0x12);
    }
 }
 
@@ -584,21 +634,32 @@ void enc624j600ConfigureDuplexMode(NetInterface *interface)
  * @param[in] data Register value
  **/
 
+void enc624_PSP_WriteReg(NetInterface *interface, uint8_t address, uint16_t data)
+{
+	interface->busDriver->write_u8( interface->busDriver, address + 0x7e00, LSB(data));
+	interface->busDriver->write_u8( interface->busDriver, address + 0x7e00 + 1 , MSB(data));
+}
 void enc624j600WriteReg(NetInterface *interface, uint8_t address, uint16_t data)
 {
+	//todo SPI接口根据后期需要再去实现
    //Pull the CS pin low
-   interface->spiDriver->assertCs();
+//   interface->busDriver->assertCs(interface->busDriver);
+//
+//   //Write opcode
+//   interface->busDriver->write_u8( interface->busDriver, ENC624J600_CMD_WCRU);
+//   //Write register address
+//   interface->busDriver->write_u8( interface->busDriver, address);
+//
+//   //Write register value
+//   interface->busDriver->write_u8( interface->busDriver, LSB(data));
+//   interface->busDriver->write_u8( interface->busDriver, MSB(data));
+//
+//
+//   //Terminate the operation by raising the CS pin
+//   interface->busDriver->deassertCs( interface->busDriver);
+//
 
-   //Write opcode
-   interface->spiDriver->transfer(ENC624J600_CMD_WCRU);
-   //Write register address
-   interface->spiDriver->transfer(address);
-   //Write register value
-   interface->spiDriver->transfer(LSB(data));
-   interface->spiDriver->transfer(MSB(data));
 
-   //Terminate the operation by raising the CS pin
-   interface->spiDriver->deassertCs();
 }
 
 
@@ -608,28 +669,36 @@ void enc624j600WriteReg(NetInterface *interface, uint8_t address, uint16_t data)
  * @param[in] address Register address
  * @return Register value
  **/
+uint16_t enc624_PSP_ReadReg(NetInterface *interface, uint8_t address)
+{
+	uint16_t data = 0;
+	data = interface->busDriver->read_u8( interface->busDriver, ( address + 0x7e00));
+	data |= interface->busDriver->read_u8( interface->busDriver, ( address + 0x7e00 + 1)) << 8 ;
+	return data;
 
+}
 uint16_t enc624j600ReadReg(NetInterface *interface, uint8_t address)
 {
-   uint16_t data;
+	//todo SPI接口根据后期需要再去实现
+//   uint16_t data;
 
    //Pull the CS pin low
-   interface->spiDriver->assertCs();
-
-   //Write opcode
-   interface->spiDriver->transfer(ENC624J600_CMD_RCRU);
-   //Write register address
-   interface->spiDriver->transfer(address);
-   //Read the lower 8 bits of data
-   data = interface->spiDriver->transfer(0x00);
-   //Read the upper 8 bits of data
-   data |= interface->spiDriver->transfer(0x00) << 8;
-
-   //Terminate the operation by raising the CS pin
-   interface->spiDriver->deassertCs();
+//   interface->busDriver->assertCs( interface->busDriver);
+//
+//   //Write opcode
+//   interface->busDriver->write_u8( interface->busDriver, ENC624J600_CMD_RCRU);
+//   //Write register address
+//   interface->busDriver->write_u8( interface->busDriver, address);
+//   //Read the lower 8 bits of data
+//   data = interface->busDriver->read_u8( interface->busDriver, 0x00);
+//   //Read the upper 8 bits of data
+//   data |= interface->busDriver->read_u8( interface->busDriver, 0x00) << 8;
+//
+//   //Terminate the operation by raising the CS pin
+//   interface->busDriver->deassertCs( interface->busDriver);
 
    //Return register contents
-   return data;
+
 }
 
 
@@ -643,12 +712,12 @@ uint16_t enc624j600ReadReg(NetInterface *interface, uint8_t address)
 void enc624j600WritePhyReg(NetInterface *interface, uint8_t address, uint16_t data)
 {
    //Write the address of the PHY register to write to
-   enc624j600WriteReg(interface, ENC624J600_REG_MIREGADR, MIREGADR_R8 | address);
+   WriteReg[I_type](interface, ENC624J600_REG_MIREGADR, MIREGADR_R8 | address);
    //Write the 16 bits of data into the MIWR register
-   enc624j600WriteReg(interface, ENC624J600_REG_MIWR, data);
+   WriteReg[I_type](interface, ENC624J600_REG_MIWR, data);
 
    //Wait until the PHY register has been written
-   while(enc624j600ReadReg(interface, ENC624J600_REG_MISTAT) & MISTAT_BUSY);
+   while(ReadReg[ I_type](interface, ENC624J600_REG_MISTAT) & MISTAT_BUSY);
 }
 
 
@@ -662,20 +731,20 @@ void enc624j600WritePhyReg(NetInterface *interface, uint8_t address, uint16_t da
 uint16_t enc624j600ReadPhyReg(NetInterface *interface, uint8_t address)
 {
    //Write the address of the PHY register to read from
-   enc624j600WriteReg(interface, ENC624J600_REG_MIREGADR, MIREGADR_R8 | address);
+   WriteReg[I_type](interface, ENC624J600_REG_MIREGADR, MIREGADR_R8 | address);
    //Start read operation
-   enc624j600WriteReg(interface, ENC624J600_REG_MICMD, MICMD_MIIRD);
+   WriteReg[I_type](interface, ENC624J600_REG_MICMD, MICMD_MIIRD);
 
    //Wait at least 25.6us before polling the BUSY bit
    usleep(100);
    //Wait for the read operation to complete
-   while(enc624j600ReadReg(interface, ENC624J600_REG_MISTAT) & MISTAT_BUSY);
+   while(ReadReg[ I_type](interface, ENC624J600_REG_MISTAT) & MISTAT_BUSY);
 
    //Clear command register
-   enc624j600WriteReg(interface, ENC624J600_REG_MICMD, 0x00);
+   WriteReg[I_type](interface, ENC624J600_REG_MICMD, 0x00);
 
    //Return register contents
-   return enc624j600ReadReg(interface, ENC624J600_REG_MIRD);
+   return ReadReg[ I_type](interface, ENC624J600_REG_MIRD);
 }
 
 
@@ -690,44 +759,47 @@ uint16_t enc624j600ReadPhyReg(NetInterface *interface, uint8_t address)
 void enc624j600WriteBuffer(NetInterface *interface,
    uint8_t opcode, const NetBuffer *buffer, size_t offset)
 {
-   uint_t i;
-   size_t j;
-   size_t n;
-   uint8_t *p;
 
-   //Pull the CS pin low
-   interface->spiDriver->assertCs();
-
-   //Write opcode
-   interface->spiDriver->transfer(opcode);
-
+//sundh delay
+//   uint_t i;
+//   size_t j;
+//   size_t n;
+//   uint8_t *p;
+//
+//   //Pull the CS pin low
+//   interface->busDriver->assertCs( interface->busDriver);
+//
+//   //Write opcode
+//   interface->busDriver->write_u8( interface->busDriver, opcode);
+//
+//
    //Loop through data chunks
-   for(i = 0; i < buffer->chunkCount; i++)
-   {
-      //Is there any data to copy from the current chunk?
-      if(offset < buffer->chunk[i].length)
-      {
-         //Point to the first byte to be read
-         p = (uint8_t *) buffer->chunk[i].address + offset;
-         //Compute the number of bytes to copy at a time
-         n = buffer->chunk[i].length - offset;
-
-         //Copy data to SRAM buffer
-         for(j = 0; j < n; j++)
-            interface->spiDriver->transfer(p[j]);
-
-         //Process the next block from the start
-         offset = 0;
-      }
-      else
-      {
-         //Skip the current chunk
-         offset -= buffer->chunk[i].length;
-      }
-   }
-
-   //Terminate the operation by raising the CS pin
-   interface->spiDriver->deassertCs();
+//   for(i = 0; i < buffer->chunkCount; i++)
+//   {
+//      //Is there any data to copy from the current chunk?
+//      if(offset < buffer->chunk[i].length)
+//      {
+//         //Point to the first byte to be read
+//         p = (uint8_t *) buffer->chunk[i].address + offset;
+//         //Compute the number of bytes to copy at a time
+//         n = buffer->chunk[i].length - offset;
+//
+//         //Copy data to SRAM buffer
+//         for(j = 0; j < n; j++)
+//            interface->busDriver->write_u8( interface->busDriver, p[j]);
+//
+//         //Process the next block from the start
+//         offset = 0;
+//      }
+//      else
+//      {
+//         //Skip the current chunk
+//         offset -= buffer->chunk[i].length;
+//      }
+//   }
+//
+//   //Terminate the operation by raising the CS pin
+//   interface->busDriver->deassertCs( interface->busDriver);
 }
 
 
@@ -742,20 +814,21 @@ void enc624j600WriteBuffer(NetInterface *interface,
 void enc624j600ReadBuffer(NetInterface *interface,
    uint8_t opcode, uint8_t *data, size_t length)
 {
-   size_t i;
-
-   //Pull the CS pin low
-   interface->spiDriver->assertCs();
-
-   //Write opcode
-   interface->spiDriver->transfer(opcode);
-
-   //Copy data from SRAM buffer
-   for(i = 0; i < length; i++)
-      data[i] = interface->spiDriver->transfer(0x00);
-
-   //Terminate the operation by raising the CS pin
-   interface->spiDriver->deassertCs();
+	//TODO
+//   size_t i;
+//
+//   //Pull the CS pin low
+//   interface->busDriver->assertCs( interface->busDriver);
+//
+//   //Write opcode
+//   interface->busDriver->write_u8( interface->busDriver, opcode);
+//
+//   //Copy data from SRAM buffer
+//   for(i = 0; i < length; i++)
+//      data[i] = interface->busDriver->read_u8( interface->busDriver, 0x00);
+//
+//   //Terminate the operation by raising the CS pin
+//   interface->busDriver->deassertCs( interface->busDriver);
 }
 
 
@@ -765,22 +838,27 @@ void enc624j600ReadBuffer(NetInterface *interface,
  * @param[in] address Register address
  * @param[in] mask Bits to set in the target register
  **/
-
+void enc624_PSP_SetBit(NetInterface *interface, uint8_t address, uint16_t mask)
+{
+	interface->busDriver->write_u8( interface->busDriver, address + 0x7e00, LSB(mask));
+	interface->busDriver->write_u8( interface->busDriver, address + 0x7e00 + 1, LSB(mask));
+}
 void enc624j600SetBit(NetInterface *interface, uint8_t address, uint16_t mask)
 {
-   //Pull the CS pin low
-   interface->spiDriver->assertCs();
+	//todo
+//	//Pull the CS pin low
+//	interface->busDriver->assertCs( interface->busDriver);
+//
+//	//Write opcode
+//	interface->busDriver->write_u8( interface->busDriver, ENC624J600_CMD_BFSU);
+//	//Write register address
+//	interface->busDriver->write_u8( interface->busDriver, address);
+//	//Write bit mask
+//	interface->busDriver->write_u8( interface->busDriver, LSB(mask));
+//	interface->busDriver->write_u8( interface->busDriver, MSB(mask));
 
-   //Write opcode
-   interface->spiDriver->transfer(ENC624J600_CMD_BFSU);
-   //Write register address
-   interface->spiDriver->transfer(address);
-   //Write bit mask
-   interface->spiDriver->transfer(LSB(mask));
-   interface->spiDriver->transfer(MSB(mask));
-
-   //Terminate the operation by raising the CS pin
-   interface->spiDriver->deassertCs();
+//	//Terminate the operation by raising the CS pin
+//	interface->busDriver->deassertCs( interface->busDriver);
 }
 
 
@@ -790,22 +868,27 @@ void enc624j600SetBit(NetInterface *interface, uint8_t address, uint16_t mask)
  * @param[in] address Register address
  * @param[in] mask Bits to clear in the target register
  **/
-
+void enc624_PSP_ClearBit(NetInterface *interface, uint8_t address, uint16_t mask)
+{
+	interface->busDriver->write_u8( interface->busDriver, address + 0x7e00, LSB(mask));
+	interface->busDriver->write_u8( interface->busDriver, address + 0x7e00 + 1, LSB(mask));
+}
 void enc624j600ClearBit(NetInterface *interface, uint8_t address, uint16_t mask)
 {
-   //Pull the CS pin low
-   interface->spiDriver->assertCs();
-
-   //Write opcode
-   interface->spiDriver->transfer(ENC624J600_CMD_BFCU);
-   //Write register address
-   interface->spiDriver->transfer(address);
-   //Write bit mask
-   interface->spiDriver->transfer(LSB(mask));
-   interface->spiDriver->transfer(MSB(mask));
-
-   //Terminate the operation by raising the CS pin
-   interface->spiDriver->deassertCs();
+	//TODO later
+	//Pull the CS pin low
+//	interface->busDriver->assertCs( interface->busDriver);
+//
+//	//Write opcode
+//	interface->busDriver->write_u8( interface->busDriver, ENC624J600_CMD_BFCU);
+//	//Write register address
+//	interface->busDriver->write_u8( interface->busDriver, address);
+//	//Write bit mask
+//	interface->busDriver->write_u8( interface->busDriver, LSB(mask));
+//	interface->busDriver->write_u8( interface->busDriver, MSB(mask));
+//
+//	//Terminate the operation by raising the CS pin
+//	interface->busDriver->deassertCs( interface->busDriver);
 }
 
 
@@ -856,31 +939,45 @@ void enc624j600DumpReg(NetInterface *interface)
    uint8_t i;
    uint8_t bank;
    uint16_t address;
-
-   //Display header
-   TRACE_DEBUG("    Bank 0  Bank 1  Bank 2  Bank 3  Unbanked\r\n");
-
-   //Loop through register addresses
-   for(i = 0; i < 32; i += 2)
+   if( I_type == ENC_INTERFACE_PSP)
    {
-      //Display register address
-      TRACE_DEBUG("%02" PRIu8 ": ", i);
+	   TRACE_DEBUG( " Dump reg \r\n");
+	   for(i = 0; i < 0xa0; i += 2)
+	   {
+		   TRACE_DEBUG("%02d : ", i);
+		   TRACE_DEBUG("0x%04x ", ReadReg[ I_type](interface, i));
+		   TRACE_DEBUG("\r\n");
+	   }
+	   TRACE_DEBUG("\r\n");
+   }
+   else
+   {
+	   //Display header
+	  TRACE_DEBUG("    Bank 0  Bank 1  Bank 2  Bank 3  Unbanked\r\n");
 
-      //Loop through bank numbers
-      for(bank = 0; bank < 5; bank++)
-      {
-         //Format register address
-         address = 0x7E00 | (bank << 5) | i;
-         //Display register contents
-         TRACE_DEBUG("0x%04" PRIX16 "  ", enc624j600ReadReg(interface, address));
-      }
+	  //Loop through register addresses
+	  for(i = 0; i < 32; i += 2)
+	  {
+		 //Display register address
+		 TRACE_DEBUG("%02d : ", i);
 
-      //Jump to the following line
-      TRACE_DEBUG("\r\n");
+		 //Loop through bank numbers
+		 for(bank = 0; bank < 5; bank++)
+		 {
+			//Format register address
+			address = 0x7E00 | (bank << 5) | i;
+			//Display register contents
+			TRACE_DEBUG("0x%04x ", ReadReg[ I_type](interface, address));
+		 }
+
+		 //Jump to the following line
+		 TRACE_DEBUG("\r\n");
+	  }
+
+	  //Terminate with a line feed
+	  TRACE_DEBUG("\r\n");
    }
 
-   //Terminate with a line feed
-   TRACE_DEBUG("\r\n");
 #endif
 }
 
@@ -894,12 +991,12 @@ void enc624j600DumpPhyReg(NetInterface *interface)
 {
 #if (TRACE_LEVEL >= TRACE_LEVEL_DEBUG)
    uint8_t i;
-
+   TRACE_DEBUG( " Dump phy reg \r\n");
    //Loop through PHY registers
    for(i = 0; i < 32; i++)
    {
       //Display current PHY register
-      TRACE_DEBUG("%02" PRIu8 ": 0x%04" PRIX16 "\r\n", i, enc624j600ReadPhyReg(interface, i));
+      TRACE_DEBUG("%02d: 0x%04x \r\n", i, enc624j600ReadPhyReg(interface, i));
    }
 
    //Terminate with a line feed
