@@ -13,7 +13,7 @@
 typedef int err_t;
 #define __err_t_defined
 #endif
-
+#include <stdlib.h>
 /*
 err_t :
 MSB  ----------|----------- LSB
@@ -36,4 +36,16 @@ MSB  ----------|----------- LSB
 #define MODULE_ID(_error_t)		(((_error_t) & ~(ERROR_BIT)) >> ERROR_BITS)
 
 #define INVERSE_ERROR(_error_t) ((_error_t) & ( ~(ERROR_BIT)))
+
+//----------------------------------------------------------------------
+//系统中的组件，两层结构
+// 高4位表示层级 低四位表示层级中的序号   层级|序号
+//----------------------------------------------------------------------
+#define	APP_MAIN	0x00
+#define HAL_ENC624	0x80
+#define DRIVE_GPMC	0x90
+#define DRIVE_GPIO	0x91
 #endif /* ERROR_HEAD_H_ */
+
+
+
