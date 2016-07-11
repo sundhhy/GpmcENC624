@@ -8,10 +8,14 @@
 #ifndef DEBUG_H_
 #define DEBUG_H_
 
-#define	DEBUG_DRIVE_PILING				//驱动架构调试，将具体的硬件操作里面进行打桩
-#define DEBUG_SWITCH
+#define	DEBUG_DRIVE_LEVEL
+//#define DEBUG_SWITCH
 #include <stdio.h>
+#include <stdint.h>
 
+#define NIC_TRACE_LEVEL			2
+#define TRACE_LEVEL_DEBUG	1
+//#define DEBUG_OSA
 #ifdef    DEBUG_SWITCH
 #define TRACE_INFO(fmt,args...) printf(fmt, ##args)
 #else
@@ -26,4 +30,12 @@
 #endif
 
 
+typedef struct {
+	uint32_t		irq_count[2];
+	uint32_t		event_count[2];
+	uint32_t		event_handle_count;
+}Sys_deginfo;
+
+extern Sys_deginfo		Dubug_info;
+//#define DEBUG_ONLY_GPIO_INIT			//调试GPIO配置的时候出现SIGBUS的问题
 #endif /* DEBUG_H_ */

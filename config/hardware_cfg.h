@@ -27,19 +27,27 @@ typedef struct gpmc_config {
 	char		write_type;
 	bool 		use_dma;
 
-//	char		rese[2];
+	char		rese[3];
 
 
 
 }gpmc_chip_cfg;
 
 typedef struct gpio_config {
-
+	//GPIOg_n
+	uint8_t		pin_group;			//引脚组号
+	uint8_t		pin_number;			//引脚组内序号
+	uint8_t		intr_type;
+	uint8_t		intr_line;		//AM335x的GPIO中断有两个中断线
+	uint8_t		debou_time;
+	uint8_t		instance;
+	uint16_t	pin_ctrl_off;
 }gpio_cfg;
 
 
 
-extern gpio_cfg Enc624_extern_intr;
+extern gpio_cfg Enc624_extern_intr0;
+extern gpio_cfg Enc624_extern_intr1;
 extern gpmc_chip_cfg Gpmc_cfg_c2;
 extern gpmc_chip_cfg Gpmc_cfg_c3;
 #endif /* HARDWARE_CFG_H_ */

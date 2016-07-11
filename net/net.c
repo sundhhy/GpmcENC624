@@ -10,6 +10,8 @@
 #include "net.h"
 #include "debug.h"
 
+//#define DEBUG_NET
+
 err_t macCompAddr( MacAddr_u16 *mac1, MacAddr_u16 *mac2)
 {
 	int i;
@@ -30,31 +32,44 @@ err_t macCompAddr( MacAddr_u16 *mac1, MacAddr_u16 *mac2)
 
 err_t nicNotifyLinkChange( NetInterface *Inet )
 {
-#ifdef DEBUG_DRIVE_PILING
+#ifdef DEBUG_NET
 	TRACE_INFO("Drive Piling :%s-%s-%d \r\n", __FILE__, __func__, __LINE__);
 	return EXIT_SUCCESS;
 #else
 
+	return EXIT_SUCCESS;
 #endif
 }
 
 err_t nicProcessPacket( NetInterface * Inet, uint8_t *frame, int len)
 {
-#ifdef DEBUG_DRIVE_PILING
-	TRACE_INFO("Drive Piling :%s-%s-%d \r\n", __FILE__, __func__, __LINE__);
+#ifdef DEBUG_NET
+	int	i = 0;
+	TRACE_INFO("Recv %d datas  ", len);
+
+//	for( i = 0; i < len; i ++)
+//	{
+//		if( i % 8 == 0)
+//			TRACE_INFO("\r\n");
+//		TRACE_INFO("0x%02x ", frame[i]);
+//	}
+	TRACE_INFO("\r\n");
+
 	return EXIT_SUCCESS;
 #else
 
+	return EXIT_SUCCESS;
 #endif
 }
 
-int netBufferGetLength( NetBuffer *net_buf)
+int netBufferGetLength( const NetBuffer *net_buf)
 {
-#ifdef DEBUG_DRIVE_PILING
+#ifdef DEBUG_NET
 	TRACE_INFO("Drive Piling :%s-%s-%d \r\n", __FILE__, __func__, __LINE__);
 	return EXIT_SUCCESS;
 #else
 
+	return EXIT_SUCCESS;
 #endif
 }
 

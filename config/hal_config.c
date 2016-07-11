@@ -9,4 +9,5 @@
 
 struct hal_enc_cfg Hal_enc_cfg = {
 		ENC_INTERFACE_PSP,
+		{ &Enc624_extern_intr0, &Enc624_extern_intr1},
 };

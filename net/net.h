@@ -17,6 +17,8 @@
 #include "am335x_gpio.h"
 
 #define MAC_LEN		6
+#define RX_EVENT	1
+#define TX_EVENT	2
 
 typedef struct
 {
@@ -52,18 +54,20 @@ typedef struct
 	bool					speed100;
 	bool					fullDuplex;
 	bool					linkState;
+	uint8_t					instance;
 
-	char					instance;
-
-	//下面的成员的数据类型是临时填充的，现在并不确定。16-07-04
+	//todo 下面的成员的数据类型是临时填充的，现在并不确定。16-07-04
 	int 					nicRxEvent;
 	int						nicTxEvent;
 
+	//debug info
+	uint32_t				rx_event_handle_count;
+	uint32_t				tx_event_handle_count;
 
 }NetInterface;
 
 err_t macCompAddr( MacAddr_u16 *mac1, MacAddr_u16 *mac2);
 err_t nicNotifyLinkChange( NetInterface *Inet );
 err_t nicProcessPacket( NetInterface * Inet, uint8_t *frame, int len);
-int netBufferGetLength( NetBuffer *net_buf);
+int netBufferGetLength( const NetBuffer *net_buf);
 #endif /* NET_METHOD_H_ */

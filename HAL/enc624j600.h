@@ -477,7 +477,11 @@ typedef struct
 
 
 
-
+struct rsv {
+	uint16_t next_packet;
+	uint16_t len;
+	uint32_t rxstat;
+};
 
 
 
@@ -493,9 +497,8 @@ typedef struct NIC_drive
 	void 	( *EventHandler)(NetInterface *interface);
 	err_t 	( *SetMacFilter)(NetInterface *interface);
 	err_t 	( *SendPacket)(NetInterface *interface, const NetBuffer *buffer, size_t offset);
+	err_t 	( *destory)(NetInterface *interface);
 
-
-	void 	*unkonw1;
 	void 	*unkonw2;
 	bool	bool_xx1;
 	bool	bool_xx2;
@@ -507,13 +510,14 @@ extern const NicDriver enc624j600Driver;
 
 //ENC624J600 related functions
 err_t enc624j600Init(NetInterface *interface);
+err_t enc624j600destory(NetInterface *interface);
 err_t enc624j600SoftReset(NetInterface *interface);
 
 void enc624j600Tick(NetInterface *interface);
 
 void enc624j600EnableIrq(NetInterface *interface);
 void enc624j600DisableIrq(NetInterface *interface);
-bool enc624j600IrqHandler(NetInterface *interface);
+bool enc624j600IrqHandler(void *arg);
 void enc624j600EventHandler(NetInterface *interface);
 
 err_t enc624j600SetMacFilter(NetInterface *interface);
@@ -522,6 +526,8 @@ err_t enc624j600SendPacket(NetInterface *interface,
    const NetBuffer *buffer, size_t offset);
 
 err_t enc624j600ReceivePacket(NetInterface *interface,
+   uint8_t *buffer, size_t size, size_t *length);
+err_t enc624_PSP_ReceivePacket(NetInterface *interface,
    uint8_t *buffer, size_t size, size_t *length);
 
 void enc624j600ConfigureDuplexMode(NetInterface *interface);
@@ -539,6 +545,8 @@ void enc624j600WriteBuffer(NetInterface *interface,
 
 void enc624j600ReadBuffer(NetInterface *interface,
    uint8_t opcode, uint8_t *data, size_t length);
+void enc624_PSP_ReadSram(NetInterface *interface,
+   uint16_t *address, uint8_t *data, size_t length);
 
 void enc624j600SetBit(NetInterface *interface, uint8_t address, uint16_t mask);
 void enc624j600ClearBit(NetInterface *interface, uint8_t address, uint16_t mask);
@@ -548,6 +556,7 @@ void enc624_PSP_ClearBit(NetInterface *interface, uint8_t address, uint16_t mask
 uint32_t enc624j600CalcCrc(const void *data, size_t length);
 
 void enc624j600DumpReg(NetInterface *interface);
+void enc624j600_print_reg(NetInterface *interface, uint16_t addr);
 void enc624j600DumpPhyReg(NetInterface *interface);
 
 #endif

@@ -1,57 +1,215 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
-
-#include <err.h>
+#include <unistd.h>
+#include <sys/neutrino.h>
+#include <errno.h>
 #include "net.h"
 #include "enc624j600.h"
+#include <assert.h>
+#include <stdbool.h>
+#include <fcntl.h>
+#include "debug.h"
 
-static err_t create_net_interface( NetInterface **Inet);
+static err_t create_net_interface( int  instance);
+static err_t destory_net_interface( int  instance);
+static void MyHandler( int sig_number );
+static void show_debug_info( Sys_deginfo *info);
+static int set_nonblock_flag( int desc, int value);
+NetInterface	*Inet[2];
+bool	Running = true;
 
-NetInterface	*Inet1;
+Sys_deginfo		Dubug_info;
+
 int main(int argc, char *argv[])
 {
 	err_t ret = 0;
+	int i = 0, count = 0;
+	char opt;
+	uint8_t 	instance;
+	 if(ThreadCtl(_NTO_TCTL_IO, 0) != EOK)
+	 {
+		printf("You must be root.");
+			// We will not return
+	 }
 
 	printf("Drive of ENC624\n");
+	printf(" enter instance 1/2 or 3 for both \r\n");
+	instance = getchar() - '0' ;
+	assert( instance < 4);
 
-	ret = create_net_interface( &Inet1);
-	if( ret)
+	signal(SIGCHLD,SIG_IGN);
+	signal(SIGUSR1,MyHandler);
+	signal(SIGTERM,MyHandler);
+
+	for( i = 0; i < 2; i++)
 	{
-		printf("create_net_interface fail, exit\n");
-		return EXIT_FAILURE;
+		if( instance & ( 1 << i))
+		{
+			ret = create_net_interface( i);
+			if( ret)
+			{
+				printf("create_net_interface fail, exit\n");
+				return EXIT_FAILURE;
+			}
+			enc624j600Driver.Init( Inet[ i]);
+		}
 	}
 
+#ifndef DEBUG_ONLY_GPIO_INIT
+	for( i = 0; i < 2; i++)
+	{
+		if( Inet[ i] != NULL)
+			enc624j600Driver.EnableIrq( Inet[ i]);
+	}
 
-	enc624j600Driver.Init( Inet1);
+#endif
+
+	printf("press q to exit \n");
+	set_nonblock_flag( 0, 1);
+	while( Running)
+	{
+		opt = getchar();
+		if( opt == 'q')
+			break;
+		count ++;
+
+		show_debug_info( &Dubug_info);
+		if( count %40 == 0)
+		{
+
+//
+			printf(" run ... \n");
+			enc624j600_print_reg(Inet[ 0], ENC624J600_REG_ESTAT);
+			enc624j600_print_reg(Inet[ 0], ENC624J600_REG_EIR);
+			enc624j600_print_reg(Inet[ 0], ENC624J600_REG_EIE);
+
+
+
+			//Display actual speed and duplex mode
+			TRACE_DEBUG("%s %s\r\n",
+					Inet[ 0]->speed100 ? "100BASE-TX" : "10BASE-T",
+							Inet[ 0]->fullDuplex ? "Full-Duplex" : "Half-Duplex");
+
+
+//			enc624j600DumpReg(Inet[ 0]);
+//			enc624j600DumpPhyReg(Inet[ 0]);
+		}
+
+		delay(100);
+	}
+
+	for( i = 0; i < 2; i++)
+	{
+		if( instance & ( 1 << i))
+		{
+
+			enc624j600Driver.destory( Inet[ i]);
+			destory_net_interface( i);
+		}
+	}
+
+	printf(" program exit ! \n");
 
 	return EXIT_SUCCESS;
 }
 
-static err_t create_net_interface( NetInterface **Inet)
+static err_t create_net_interface( int  instance)
 {
-	*Inet = malloc( sizeof(NetInterface));
-	if( Inet == NULL)
+	Inet[ instance] = malloc( sizeof(NetInterface));
+	if( Inet[ instance] == NULL)
 		goto err1;
 
-	memset( *Inet, 0, sizeof(NetInterface));
-	(*Inet)->nicContext = malloc( sizeof(Enc624j600Context));
-	if( (*Inet)->nicContext == NULL)
+
+	memset( Inet[ instance], 0, sizeof(NetInterface));
+	Inet[ instance]->nicContext = malloc( sizeof(Enc624j600Context));
+	if( Inet[ instance]->nicContext == NULL)
 			goto err2;
 
-	(*Inet)->instance = 0;
-	memset( &(*Inet)->macAddr, 0, sizeof(MacAddr_u16));
+	Inet[ instance]->ethFrame = malloc( 2*1024);		//24k
+	if( Inet[ instance]->ethFrame == NULL)
+				goto err3;
 
-//	(*Inet)->macAddr.w[0] = 0x1234;
-//	(*Inet)->macAddr.w[1] = 0x5678;
-//	(*Inet)->macAddr.w[2] = 0x9abc;
+
+	Inet[ instance]->instance = instance;
+	memset( &Inet[ instance]->macAddr, 0, sizeof( MacAddr_u16));
+
+	Inet[ instance]->macAddr.w[0] = 0xd0ff;
+	Inet[ instance]->macAddr.w[1] = 0x5087;
+	Inet[ instance]->macAddr.w[2] = 0xf80e + instance;
+
+	Inet[ instance]->nicRxEvent = RX_EVENT;
+	Inet[ instance]->nicTxEvent = TX_EVENT;
+
+	sprintf( Inet[ instance]->name, "eth%d", instance);
 
 	return EXIT_SUCCESS;
 
+err3:
+	free( Inet[ instance]->nicContext);
 err2:
-	free(*Inet);
+	free( Inet[ instance]);
 err1:
 	return EXIT_FAILURE;
 }
 
+static err_t destory_net_interface( int  instance)
+{
 
+
+	free( Inet[ instance]->nicContext);
+	free( Inet[ instance]);
+
+	return EXIT_SUCCESS;
+
+
+}
+
+static void MyHandler( int sig_number )
+{
+	Running = false;
+}
+
+static int set_nonblock_flag( int desc, int value)
+{
+	int oldflags = fcntl( desc, F_GETFL , 0);
+	if( oldflags == -1)
+		return -1;
+
+	if( value != 0)
+		oldflags |= O_NONBLOCK;
+	else
+		oldflags &= ~O_NONBLOCK;
+
+	return fcntl( desc, F_SETFL , oldflags);
+}
+
+
+static void show_debug_info( Sys_deginfo *info)
+{
+	static Sys_deginfo	old_ifo;
+
+	if( Dubug_info.irq_count[0] != old_ifo.irq_count[0] || Dubug_info.irq_count[1] != old_ifo.irq_count[1] )
+	{
+		old_ifo.irq_count[0] = Dubug_info.irq_count[0];
+		old_ifo.irq_count[1] = Dubug_info.irq_count[1];
+		printf("irq_count :");
+		printf( "%d,%d \n", Dubug_info.irq_count[0], Dubug_info.irq_count[1]);
+	}
+
+	if( Dubug_info.event_count[0] != old_ifo.event_count[0] || Dubug_info.event_count[1] != old_ifo.event_count[1] )
+	{
+		old_ifo.event_count[0] = Dubug_info.event_count[0];
+		old_ifo.event_count[1] = Dubug_info.event_count[1];
+		printf("event count :");
+		printf( "RX_EVENT %d, TX_EVENT %d \n", Dubug_info.event_count[0], Dubug_info.event_count[1]);
+	}
+
+	if( Dubug_info.event_handle_count != old_ifo.event_handle_count)
+	{
+		old_ifo.event_handle_count = Dubug_info.event_handle_count;
+		printf( "event_handle_count %d\n", Dubug_info.event_handle_count);
+
+	}
+
+}

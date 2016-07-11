@@ -97,17 +97,17 @@
 #define MAX_MASKADDRESS		0x10000000   //芯片手册中的值，256M
 #define MASKADDRESS_UNIT	0x1000000
 #define GPMC_TICK_NS		10				//GPMC的FCLK的频率是100MHz，不分频的情况下，每个FCLK时钟滴答是10ns
-//#define NS_TO_TICK( ns)   \
-//	( ns / GPMC_TICK_NS == 0)? 1: (ns / GPMC_TICK_NS)
+//#define NS_TO_TICK( ns)    ( ns / GPMC_TICK_NS == 0)? 1: (ns / GPMC_TICK_NS)
 #define NS_TO_TICK( ns)	(ns / GPMC_TICK_NS)
 
-
+typedef uintptr_t SINGLETON;
 CLASS(Drive_Gpmc)
 {
 
 //	IMPLEMENTS(IBusDrive);
 
 	err_t 	(*init)(Drive_Gpmc * , void * );
+	err_t	( *destory)( Drive_Gpmc *);
 
 	err_t	(*assertCs)(Drive_Gpmc *);
 	err_t	(*deassertCs)(Drive_Gpmc *);
@@ -115,11 +115,11 @@ CLASS(Drive_Gpmc)
 	err_t	(*write_u8)(Drive_Gpmc *, uint32_t , uint8_t );
 	uint8_t	(*read_u8)(Drive_Gpmc *, uint32_t );
 
-	uintptr_t			gpmc_vbase;
+	SINGLETON			gpmc_vbase;
 	volatile uint8_t	*p_enc624;			//外部设备的总线地址的虚拟地址
 	gpmc_chip_cfg		*config;
-	uint16_t			cs_regoffset;
-
+	uint32_t			cs_regoffset;
+//	uint16_t			rese;
 
 
 

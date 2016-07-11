@@ -61,7 +61,7 @@ const NicDriver enc624j600Driver =
    enc624j600EventHandler,
    enc624j600SetMacFilter,
    enc624j600SendPacket,
-   NULL,
+   enc624j600destory,
    NULL,
    TRUE,
    TRUE,
@@ -70,9 +70,8 @@ const NicDriver enc624j600Driver =
 
 MacAddr_u16	MAC_UNSPECIFIED_ADDR = { { 0, 0, 0}};
 
-IBusDrive				*ENC624_Bus;
-Drive_Gpmc			*Drive_PSPDriver;
-Drive_Gpio			*Drive_extIntDriver;
+Drive_Gpmc			*Drive_PSPDriver[2];
+Drive_Gpio			*Drive_extIntDriver[2];
 /**
  * @brief ENC624J600 controller initialization
  * @param[in] interface Underlying network interface
@@ -88,31 +87,45 @@ err_t enc624j600Init(NetInterface *interface)
    TRACE_INFO("Initializing ENC624J600 Ethernet controller...\r\n");
 
    //ENC接口连接到GPMC总线和GPIO中断引脚
-
+#ifndef DEBUG_ONLY_GPIO_INIT
    if( Hal_enc_cfg.interface_type == ENC_INTERFACE_PSP)
    {
-	   Drive_PSPDriver = Drive_Gpmc_new();
-	   if( Drive_PSPDriver == NULL)
+	   Drive_PSPDriver[ interface->instance] = Drive_Gpmc_new();
+	   if( Drive_PSPDriver[ interface->instance] == NULL)
 		   return ERROR_T(init_memory_invalid);
 //	   interface->busDriver = SUPER_PTR(Drive_PSPDriver, IBusDrive);
-	   interface->busDriver = Drive_PSPDriver;
+	   interface->busDriver = Drive_PSPDriver[ interface->instance];
 	   WriteReg[ ENC_INTERFACE_PSP] = enc624_PSP_WriteReg;
 	   ReadReg[ ENC_INTERFACE_PSP] = enc624_PSP_ReadReg;
 	   SetBit[ ENC_INTERFACE_PSP] = enc624_PSP_SetBit;
 	   ClearBit[ ENC_INTERFACE_PSP] = enc624_PSP_ClearBit;
+
+
+//	   SetBit[ ENC_INTERFACE_PSP] = enc624j600SetBit;
+//	   ClearBit[ ENC_INTERFACE_PSP] = enc624j600ClearBit;
 
    }
    else {
 	   return ERROR_T(invalid_bus_type);
    }
    I_type = Hal_enc_cfg.interface_type;
-   Drive_extIntDriver = Drive_Gpio_new();
-   if( Drive_PSPDriver == NULL)
+#endif
+   Drive_extIntDriver[ interface->instance] = Drive_Gpio_new();
+   if( Drive_extIntDriver[ interface->instance] == NULL)
 	   goto err_extInt;
 //   interface->extIntDriver =  SUPER_PTR(Drive_extIntDriver, IExternIntr);
-   interface->extIntDriver = Drive_extIntDriver;
+   interface->extIntDriver = Drive_extIntDriver[ interface->instance];
+   interface->extIntDriver->irq_handle = enc624j600IrqHandler;
+   interface->extIntDriver->irq_handle_arg = interface;
 
+   //Initialize external interrupt line
+   interface->extIntDriver->config = Hal_enc_cfg.extInt_cfg[ interface->instance];
 
+#ifdef  DEBUG_ONLY_GPIO_INIT
+   interface->extIntDriver->init( interface->extIntDriver);
+#endif
+
+#ifndef DEBUG_ONLY_GPIO_INIT
    //Initialize SPI
    interface->busDriver->init( interface->busDriver, &interface->instance);
    //Initialize external interrupt line
@@ -162,8 +175,7 @@ err_t enc624j600Init(NetInterface *interface)
 
    //All short frames will be zero-padded to 60 bytes and a valid CRC is then appended
    WriteReg[I_type](interface, ENC624J600_REG_MACON2,
-      MACON2_DEFER | MACON2_PADCFG0 | MACON2_TXCRCEN | MACON2_R1);
-
+      MACON2_DEFER | MACON2_PADCFG0 | MACON2_TXCRCEN | MACON2_R1 );
    //Program the MAMXFL register with the maximum frame length to be accepted
    WriteReg[I_type](interface, ENC624J600_REG_MAMXFL, 1518);
 
@@ -171,12 +183,15 @@ err_t enc624j600Init(NetInterface *interface)
    enc624j600WritePhyReg(interface, ENC624J600_PHY_REG_PHANA, PHANA_ADPAUS0 |
       PHANA_AD100FD | PHANA_AD100 | PHANA_AD10FD | PHANA_AD10 | PHANA_ADIEEE0);
 
+   //sundh add
+//   enc624j600WritePhyReg(interface, ENC624J600_PHY_REG_PHCON1, PHCON1_ANEN | PHCON1_RENEG );
+
    //Clear interrupt flags
    WriteReg[I_type](interface, ENC624J600_REG_EIR, 0x0000);
 
    //Configure interrupts as desired
    WriteReg[I_type](interface, ENC624J600_REG_EIE, EIE_INTIE |
-      EIE_LINKIE | EIE_PKTIE | EIE_TXIE | EIE_TXABTIE);
+      EIE_LINKIE | EIE_PKTIE | EIE_TXIE | EIE_TXABTIE | EIE_PCFULIE | EIE_RXABTIE);		//sundh add 'EIE_RXABTIE'
 
    //Set RXEN to enable reception
    SetBit[ I_type](interface, ENC624J600_REG_ECON1, ECON1_RXEN);
@@ -186,18 +201,32 @@ err_t enc624j600Init(NetInterface *interface)
    enc624j600DumpPhyReg(interface);
 
    //Force the TCP/IP stack to check the link state
+   sleep(1);
    osSetEvent(&interface->nicRxEvent);
+   sleep(1);
+   enc624j600DumpReg(interface);
    //ENC624J600 transmitter is now ready to send
    osSetEvent(&interface->nicTxEvent);
-
+#endif
    //Successful initialization
    return NO_ERROR;
 
 err_extInt :
 	interface->busDriver = NULL;
-	free(Drive_PSPDriver);
+	free(Drive_PSPDriver[ interface->instance] );
 	return ERROR_T(init_createclass_fail);
 
+}
+
+err_t enc624j600destory(NetInterface *interface)
+{
+	interface->extIntDriver->deatory( interface->extIntDriver);
+#ifndef DEBUG_ONLY_GPIO_INIT
+	interface->busDriver->destory( interface->busDriver);
+	interface->busDriver = NULL;
+#endif
+	interface->extIntDriver = NULL;
+	return NO_ERROR;
 }
 
 
@@ -206,21 +235,26 @@ err_extInt :
  * @param[in] interface Underlying network interface
  * @return Error code
  **/
-
+//#define DEBUG_PSP_WR
 err_t enc624j600SoftReset(NetInterface *interface)
 {
+#define EUDAST_TEST_VAL 0x1234
    //Wait for the SPI interface to be ready
    do
    {
       //Write 0x1234 to EUDAST
-      WriteReg[I_type](interface, ENC624J600_REG_EUDAST, 0x5a5a);
+      WriteReg[I_type](interface, ENC624J600_REG_EUDAST, EUDAST_TEST_VAL);
       //Read back register and check contents
-   } while(ReadReg[ I_type](interface, ENC624J600_REG_EUDAST) != 0x5a5a);
-//      delay(1);
-//   }while(1);
+#ifdef DEBUG_PSP_WR
+      delay(1);
+	}while(1);
+#else
+   } while(ReadReg[ I_type](interface, ENC624J600_REG_EUDAST) != EUDAST_TEST_VAL);
+#endif
+
 
    //Poll CLKRDY and wait for it to become set
-   while(!(ReadReg[ I_type](interface, ENC624J600_REG_ESTAT) & ESTAT_CLKRDY));
+   while(!( ReadReg[ I_type](interface, ENC624J600_REG_ESTAT) & ESTAT_CLKRDY));
 
    //Issue a system reset command by setting ETHRST
    SetBit[ I_type](interface, ENC624J600_REG_ECON2, ECON2_ETHRST);
@@ -281,14 +315,14 @@ void enc624j600DisableIrq(NetInterface *interface)
  * @return TRUE if a higher priority task must be woken. Else FALSE is returned
  **/
 
-bool enc624j600IrqHandler(NetInterface *interface)
+bool enc624j600IrqHandler(void *arg)
 {
    bool flag;
    uint16_t status;
-
+   NetInterface *interface = ( NetInterface *)arg;
    //This flag will be set if a higher priority task must be woken
    flag = FALSE;
-
+   Dubug_info.irq_count[ interface->instance] ++;
    //Clear the INTIE bit, immediately after an interrupt event
    ClearBit[ I_type](interface, ENC624J600_REG_EIE, EIE_INTIE);
 
@@ -340,6 +374,9 @@ void enc624j600EventHandler(NetInterface *interface)
    uint16_t status;
    size_t length;
 
+
+
+   Dubug_info.event_handle_count ++;
    //Read interrupt status register
    status = ReadReg[ I_type](interface, ENC624J600_REG_EIR);
 
@@ -386,6 +423,8 @@ void enc624j600EventHandler(NetInterface *interface)
       //Process link state change event
       nicNotifyLinkChange(interface);			//sundh: delay
    }
+
+
    //Check whether a packet has been received?
    if(status & EIR_PKTIF)
    {
@@ -396,7 +435,7 @@ void enc624j600EventHandler(NetInterface *interface)
       do
       {
          //Read incoming packet
-         error = enc624j600ReceivePacket(interface,
+         error = enc624_PSP_ReceivePacket(interface,
             interface->ethFrame, ETH_MAX_FRAME_SIZE, &length);
 
          //Check whether a valid packet has been received
@@ -529,6 +568,72 @@ err_t enc624j600SendPacket(NetInterface *interface,
  * @param[out] length Number of bytes that have been received
  * @return Error code
  **/
+err_t enc624_PSP_ReceivePacket(NetInterface *interface,
+   uint8_t *buffer, size_t size, size_t *length)
+{
+	err_t error;
+
+
+	Enc624j600Context *context;
+	uint16_t			point;
+
+	//Point to the driver context
+	context = (Enc624j600Context *) interface->nicContext;
+	point = context->nextPacketPointer;
+	//Verify that a packet is waiting by ensuring that PKTCNT is non-zero
+	if(ReadReg[ I_type](interface, ENC624J600_REG_ESTAT) & ESTAT_PKTCNT)
+	{
+		struct rsv rsv;
+//		uint16_t n;
+//		uint32_t status;
+		enc624_PSP_ReadSram( interface, &point, (uint8_t *)&rsv, sizeof(rsv));
+		//Read the first two bytes, which are the address of the next packet
+//		enc624_PSP_ReadSram( interface, &point , (uint8_t *)&context->nextPacketPointer, 2);
+//		//Get the length of the received frame in bytes
+//		enc624_PSP_ReadSram(interface, &point , (uint8_t *) &n, 2);
+//		//Read the receive status vector (RSV)
+//		enc624_PSP_ReadSram(interface,  &point, (uint8_t *) &status, 4);
+
+	  //Make sure no error occurred
+	  if( rsv.rxstat & RSV_RECEIVED_OK && rsv.len <= enc624j600Driver.mtu)
+	  {
+		 //Limit the number of data to read
+		 size = MIN(size, rsv.len);
+		 //Read the Ethernet frame
+		 enc624_PSP_ReadSram(interface, &point, buffer, size);
+
+		 //Total number of bytes that have been received
+		 *length = size;
+		 //Packet successfully received
+		 error = NO_ERROR;
+	  }
+	  else
+	  {
+		 //The received packet contains an error
+		 error = ERROR_INVALID_PACKET;
+	  }
+
+	  //Update the ERXTAIL pointer value to the point where the packet
+	  //has been processed, taking care to wrap back at the end of the
+	  //received memory buffer
+	  if( rsv.next_packet == ENC624J600_RX_BUFFER_START)
+		 WriteReg[I_type](interface, ENC624J600_REG_ERXTAIL, ENC624J600_RX_BUFFER_STOP);
+	  else
+		 WriteReg[I_type](interface, ENC624J600_REG_ERXTAIL, rsv.next_packet - 2);
+
+	  //Set PKTDEC to decrement the PKTCNT bits
+	  SetBit[ I_type](interface, ENC624J600_REG_ECON1, ECON1_PKTDEC);
+	}
+	else
+	{
+	  //No more data in the receive buffer
+	  error = ERROR_BUFFER_EMPTY;
+	}
+
+	//Return status code
+	return error;
+
+}
 
 err_t enc624j600ReceivePacket(NetInterface *interface,
    uint8_t *buffer, size_t size, size_t *length)
@@ -680,7 +785,7 @@ uint16_t enc624_PSP_ReadReg(NetInterface *interface, uint8_t address)
 uint16_t enc624j600ReadReg(NetInterface *interface, uint8_t address)
 {
 	//todo SPI接口根据后期需要再去实现
-//   uint16_t data;
+   uint16_t data = 0;
 
    //Pull the CS pin low
 //   interface->busDriver->assertCs( interface->busDriver);
@@ -698,7 +803,7 @@ uint16_t enc624j600ReadReg(NetInterface *interface, uint8_t address)
 //   interface->busDriver->deassertCs( interface->busDriver);
 
    //Return register contents
-
+   return data;
 }
 
 
@@ -736,7 +841,7 @@ uint16_t enc624j600ReadPhyReg(NetInterface *interface, uint8_t address)
    WriteReg[I_type](interface, ENC624J600_REG_MICMD, MICMD_MIIRD);
 
    //Wait at least 25.6us before polling the BUSY bit
-   usleep(100);
+//   usleep(100);
    //Wait for the read operation to complete
    while(ReadReg[ I_type](interface, ENC624J600_REG_MISTAT) & MISTAT_BUSY);
 
@@ -811,11 +916,23 @@ void enc624j600WriteBuffer(NetInterface *interface,
  * @param[in] length Number of data to read
  **/
 
+void enc624_PSP_ReadSram(NetInterface *interface,
+   uint16_t *address, uint8_t *data, size_t length)
+{
+	int i;
+	for( i = 0; i < length; i ++) {
+		data[i] = interface->busDriver->read_u8( interface->busDriver, *address);
+		*address = *address + 1;
+	}
+}
+
 void enc624j600ReadBuffer(NetInterface *interface,
    uint8_t opcode, uint8_t *data, size_t length)
 {
 	//TODO
 //   size_t i;
+
+
 //
 //   //Pull the CS pin low
 //   interface->busDriver->assertCs( interface->busDriver);
@@ -840,8 +957,12 @@ void enc624j600ReadBuffer(NetInterface *interface,
  **/
 void enc624_PSP_SetBit(NetInterface *interface, uint8_t address, uint16_t mask)
 {
-	interface->busDriver->write_u8( interface->busDriver, address + 0x7e00, LSB(mask));
-	interface->busDriver->write_u8( interface->busDriver, address + 0x7e00 + 1, LSB(mask));
+	uint16_t	reg = enc624_PSP_ReadReg( interface, address);
+	reg |= mask;
+
+	enc624_PSP_WriteReg( interface, address,  reg);
+//	interface->busDriver->write_u8( interface->busDriver, address + 0x7e00, LSB(reg));
+//	interface->busDriver->write_u8( interface->busDriver, address + 0x7e00 + 1, LSB(reg));
 }
 void enc624j600SetBit(NetInterface *interface, uint8_t address, uint16_t mask)
 {
@@ -870,8 +991,11 @@ void enc624j600SetBit(NetInterface *interface, uint8_t address, uint16_t mask)
  **/
 void enc624_PSP_ClearBit(NetInterface *interface, uint8_t address, uint16_t mask)
 {
-	interface->busDriver->write_u8( interface->busDriver, address + 0x7e00, LSB(mask));
-	interface->busDriver->write_u8( interface->busDriver, address + 0x7e00 + 1, LSB(mask));
+	uint16_t	reg = enc624_PSP_ReadReg( interface, address);
+	reg &= ~mask;
+	enc624_PSP_WriteReg( interface, address,  reg);
+//	interface->busDriver->write_u8( interface->busDriver, address + 0x7e00, LSB(reg));
+//	interface->busDriver->write_u8( interface->busDriver, address + 0x7e00 + 1, LSB(reg));
 }
 void enc624j600ClearBit(NetInterface *interface, uint8_t address, uint16_t mask)
 {
@@ -933,6 +1057,14 @@ uint32_t enc624j600CalcCrc(const void *data, size_t length)
  * @param[in] interface Underlying network interface
  **/
 
+
+void enc624j600_print_reg(NetInterface *interface, uint16_t addr)
+{
+	TRACE_DEBUG( " print reg 0x%02x ", addr);
+	TRACE_DEBUG("0x%04x ", ReadReg[ I_type](interface, addr));
+	TRACE_DEBUG("\r\n");
+}
+
 void enc624j600DumpReg(NetInterface *interface)
 {
 #if (TRACE_LEVEL >= TRACE_LEVEL_DEBUG)
@@ -944,7 +1076,7 @@ void enc624j600DumpReg(NetInterface *interface)
 	   TRACE_DEBUG( " Dump reg \r\n");
 	   for(i = 0; i < 0xa0; i += 2)
 	   {
-		   TRACE_DEBUG("%02d : ", i);
+		   TRACE_DEBUG("%02x : ", i);
 		   TRACE_DEBUG("0x%04x ", ReadReg[ I_type](interface, i));
 		   TRACE_DEBUG("\r\n");
 	   }
@@ -996,7 +1128,7 @@ void enc624j600DumpPhyReg(NetInterface *interface)
    for(i = 0; i < 32; i++)
    {
       //Display current PHY register
-      TRACE_DEBUG("%02d: 0x%04x \r\n", i, enc624j600ReadPhyReg(interface, i));
+      TRACE_DEBUG("%02x: 0x%04x \r\n", i, enc624j600ReadPhyReg(interface, i));
    }
 
    //Terminate with a line feed
