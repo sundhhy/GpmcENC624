@@ -63,4 +63,6 @@ typedef enum {
 
 }err_gpio_t;
 
+const struct sigevent *gpioExtInteIsr (void *area, int id);
+//extern struct sigevent	Gpio_event;
 #endif /* AM335X_GPIO_H_ */

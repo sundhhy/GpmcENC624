@@ -201,12 +201,10 @@ err_t enc624j600Init(NetInterface *interface)
    enc624j600DumpPhyReg(interface);
 
    //Force the TCP/IP stack to check the link state
-   sleep(1);
    osSetEvent(&interface->nicRxEvent);
-   sleep(1);
-   enc624j600DumpReg(interface);
    //ENC624J600 transmitter is now ready to send
    osSetEvent(&interface->nicTxEvent);
+
 #endif
    //Successful initialization
    return NO_ERROR;
@@ -322,7 +320,7 @@ bool enc624j600IrqHandler(void *arg)
    NetInterface *interface = ( NetInterface *)arg;
    //This flag will be set if a higher priority task must be woken
    flag = FALSE;
-   Dubug_info.irq_count[ interface->instance] ++;
+
    //Clear the INTIE bit, immediately after an interrupt event
    ClearBit[ I_type](interface, ENC624J600_REG_EIE, EIE_INTIE);
 
@@ -376,7 +374,7 @@ void enc624j600EventHandler(NetInterface *interface)
 
 
 
-   Dubug_info.event_handle_count ++;
+
    //Read interrupt status register
    status = ReadReg[ I_type](interface, ENC624J600_REG_EIR);
 
@@ -395,6 +393,7 @@ void enc624j600EventHandler(NetInterface *interface)
          interface->linkState = TRUE;
 
          //Read PHY status register 3
+
          status = enc624j600ReadPhyReg(interface, ENC624J600_PHY_REG_PHSTAT3);
          //Get current speed
          interface->speed100 = (status & PHSTAT3_SPDDPX1) ? TRUE : FALSE;
@@ -1128,7 +1127,11 @@ void enc624j600DumpPhyReg(NetInterface *interface)
    for(i = 0; i < 32; i++)
    {
       //Display current PHY register
+//	   while(1)
+	   {
       TRACE_DEBUG("%02x: 0x%04x \r\n", i, enc624j600ReadPhyReg(interface, i));
+//      delay(10);
+	   }
    }
 
    //Terminate with a line feed

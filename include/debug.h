@@ -9,13 +9,13 @@
 #define DEBUG_H_
 
 #define	DEBUG_DRIVE_LEVEL
-//#define DEBUG_SWITCH
+#define DEBUG_SWITCH
 #include <stdio.h>
 #include <stdint.h>
 
-#define NIC_TRACE_LEVEL			2
+#define NIC_TRACE_LEVEL			0
 #define TRACE_LEVEL_DEBUG	1
-//#define DEBUG_OSA
+
 #ifdef    DEBUG_SWITCH
 #define TRACE_INFO(fmt,args...) printf(fmt, ##args)
 #else

@@ -11,15 +11,22 @@
 #include <fcntl.h>
 #include "debug.h"
 
+
+
 static err_t create_net_interface( int  instance);
 static err_t destory_net_interface( int  instance);
 static void MyHandler( int sig_number );
 static void show_debug_info( Sys_deginfo *info);
 static int set_nonblock_flag( int desc, int value);
+static void* enc_drive_main(void *arg);
+
 NetInterface	*Inet[2];
 bool	Running = true;
 
 Sys_deginfo		Dubug_info;
+
+
+
 
 int main(int argc, char *argv[])
 {
@@ -27,12 +34,12 @@ int main(int argc, char *argv[])
 	int i = 0, count = 0;
 	char opt;
 	uint8_t 	instance;
-	 if(ThreadCtl(_NTO_TCTL_IO, 0) != EOK)
-	 {
-		printf("You must be root.");
-			// We will not return
-	 }
 
+	if(ThreadCtl(_NTO_TCTL_IO, 0) != EOK)
+	{
+		printf("You must be root.");
+		// We will not return
+	}
 	printf("Drive of ENC624\n");
 	printf(" enter instance 1/2 or 3 for both \r\n");
 	instance = getchar() - '0' ;
@@ -46,66 +53,76 @@ int main(int argc, char *argv[])
 	{
 		if( instance & ( 1 << i))
 		{
+
 			ret = create_net_interface( i);
 			if( ret)
 			{
 				printf("create_net_interface fail, exit\n");
 				return EXIT_FAILURE;
 			}
-			enc624j600Driver.Init( Inet[ i]);
+
+
+			ret = pthread_create ( &Inet[ i]->tid, NULL, enc_drive_main, Inet[ i]);
+			CHECK_ERROR( ret, " pthread_create()");
+
+
+
 		}
 	}
 
-#ifndef DEBUG_ONLY_GPIO_INIT
-	for( i = 0; i < 2; i++)
-	{
-		if( Inet[ i] != NULL)
-			enc624j600Driver.EnableIrq( Inet[ i]);
-	}
 
-#endif
 
 	printf("press q to exit \n");
 	set_nonblock_flag( 0, 1);
 	while( Running)
 	{
+
+
+
 		opt = getchar();
 		if( opt == 'q')
+		{
+
+
 			break;
+		}
+
+
 		count ++;
 
 		show_debug_info( &Dubug_info);
 		if( count %40 == 0)
 		{
-
 //
+////
 			printf(" run ... \n");
-			enc624j600_print_reg(Inet[ 0], ENC624J600_REG_ESTAT);
-			enc624j600_print_reg(Inet[ 0], ENC624J600_REG_EIR);
-			enc624j600_print_reg(Inet[ 0], ENC624J600_REG_EIE);
-
-
-
-			//Display actual speed and duplex mode
-			TRACE_DEBUG("%s %s\r\n",
-					Inet[ 0]->speed100 ? "100BASE-TX" : "10BASE-T",
-							Inet[ 0]->fullDuplex ? "Full-Duplex" : "Half-Duplex");
-
-
-//			enc624j600DumpReg(Inet[ 0]);
-//			enc624j600DumpPhyReg(Inet[ 0]);
+//			enc624j600_print_reg( Inet[ 0], ENC624J600_REG_ESTAT);
+//			enc624j600_print_reg( Inet[ 0], ENC624J600_REG_EIR);
+//			enc624j600_print_reg( Inet[ 0], ENC624J600_REG_EIE);
+//
+//
+//
+//			//Display actual speed and duplex mode
+//			TRACE_DEBUG("%s %s\r\n",
+//					Inet[ 0]->speed100 ? "100BASE-TX" : "10BASE-T",
+//							Inet[ 0]->fullDuplex ? "Full-Duplex" : "Half-Duplex");
+//
+//
+////			enc624j600DumpReg(Inet[ 0]);
+////			enc624j600DumpPhyReg(Inet[ 0]);
 		}
 
 		delay(100);
 	}
+
 
 	for( i = 0; i < 2; i++)
 	{
 		if( instance & ( 1 << i))
 		{
 
-			enc624j600Driver.destory( Inet[ i]);
-			destory_net_interface( i);
+			pthread_cancel( Inet[ i]->tid);
+			pthread_join( Inet[ i]->tid, NULL);
 		}
 	}
 
@@ -151,6 +168,71 @@ err2:
 	free( Inet[ instance]);
 err1:
 	return EXIT_FAILURE;
+}
+
+
+static void cleanup(void *arg)
+{
+	NetInterface *inet = ( NetInterface *)arg;
+	printf("net drive %s thread exit \n", inet->name );
+
+	enc624j600Driver.destory( inet);
+	destory_net_interface( inet->instance);
+
+}
+
+static void* enc_drive_main(void *arg)
+{
+	NetInterface *inet = ( NetInterface *)arg;
+	err_t	ret = 0;
+
+
+
+	ret = enc624j600Driver.Init( inet);
+	if( ret)
+		return NULL;
+
+
+
+	while(1)
+	{
+		enc624j600Driver.EnableIrq( inet);
+		pthread_cleanup_push(cleanup, (void *)inet);
+
+		InterruptWait_r(NULL, NULL);
+		enc624j600Driver.DisableIrq( inet);
+//		printf(" isr happened \n");
+		if( inet->isr_status & ISR_RX_EVENT)
+		{
+			atomic_clr( &inet->isr_status, ISR_RX_EVENT);
+			enc624j600Driver.EventHandler( inet);
+
+		}
+		else if(  inet->isr_status & ISR_TX_EVENT)
+		{
+			atomic_clr( &inet->isr_status, ISR_TX_EVENT);
+			enc624j600Driver.EventHandler( inet);
+
+		}
+		else if(  inet->isr_status & ISR_LINK_STATUS_CHG)
+		{
+			atomic_clr( &inet->isr_status, ISR_LINK_STATUS_CHG);
+			enc624j600Driver.EventHandler( inet);
+
+		}
+		else if(  inet->isr_status & ISR_ERROR)
+		{
+			atomic_clr( &inet->isr_status, ISR_ERROR);
+			printf(" ISR_ERROR happened \n");
+		}
+
+		pthread_cleanup_pop(0);
+	}
+
+
+
+
+
 }
 
 static err_t destory_net_interface( int  instance)

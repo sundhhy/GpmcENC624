@@ -16,7 +16,7 @@
 #include "pin_mux.h"
 #include <errno.h>
 
-const struct sigevent *gpioExtInteIsr (void *area, int id);
+
 void GPIO0ModuleClkConfig(void);
 void GPIO1ModuleClkConfig(void);
 void GPIO2ModuleClkConfig(void);
@@ -26,8 +26,9 @@ void GPIO4ModuleClkConfig(void);
 void GPIOModuleEnable(uintptr_t baseAdd);
 void GPIOModuleDisable(uintptr_t baseAdd);
 static void dump_gpio_reg( uintptr_t baseAdd);
+static struct sigevent	Gpio_event;
 
-struct sigevent	Gpio_event;
+
 static void (*gpioModuleConfig[4])(void) =
 		{
 				GPIO0ModuleClkConfig, GPIO1ModuleClkConfig, GPIO2ModuleClkConfig, GPIO3ModuleClkConfig
@@ -107,7 +108,8 @@ static err_t gpio_init(Drive_Gpio *t)
 #ifdef DEBUG_GPIO
 	dump_gpio_reg( cthis->gpio_vbase);
 #endif
-	cthis->irq_id = InterruptAttach ( GpioIntNum[ config->intr_line][ config->pin_group], gpioExtInteIsr, cthis, 1, _NTO_INTR_FLAGS_END );
+	SIGEV_INTR_INIT( &Gpio_event );
+	cthis->irq_id = InterruptAttach_r ( GpioIntNum[ config->intr_line][ config->pin_group], gpioExtInteIsr, cthis, 1, _NTO_INTR_FLAGS_END );
 	return EXIT_SUCCESS;
 #endif
 }
@@ -161,7 +163,7 @@ const struct sigevent *gpioExtInteIsr (void *area, int id)
 	Drive_Gpio 		*cthis = ( Drive_Gpio *)area ;
 	uint32_t stats;
 	stats = in32( cthis->gpio_vbase + GPIO_GPIO_IRQSTATUS( cthis->config->intr_line));
-
+	Dubug_info.irq_count[ cthis->config->instance] ++;
 	if( stats & ( 1<< cthis->config->pin_number))
 	{
 		out32( cthis->gpio_vbase + GPIO_GPIO_IRQSTATUS( cthis->config->intr_line), 1 << cthis->config->pin_number);

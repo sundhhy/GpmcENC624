@@ -15,11 +15,22 @@
 #include "lw_oopc.h"
 #include "am335x_gpmc.h"
 #include "am335x_gpio.h"
+#include <pthread.h>
+#include <atomic.h>
+
 
 #define MAC_LEN		6
 #define RX_EVENT	1
 #define TX_EVENT	2
 
+
+
+#define		ISR_TX_EVENT ( 1 << 0)
+#define		ISR_RX_EVENT ( 1 << 1)
+#define		ISR_LINK_STATUS_CHG ( 1 << 2)
+#define		ISR_RECV_PACKET ( 1 << 3)
+
+#define		ISR_ERROR ( 1 << 31)
 typedef struct
 {
 	char addr[6];
@@ -60,9 +71,8 @@ typedef struct
 	int 					nicRxEvent;
 	int						nicTxEvent;
 
-	//debug info
-	uint32_t				rx_event_handle_count;
-	uint32_t				tx_event_handle_count;
+	pthread_t				tid;
+	volatile uint32_t		isr_status;
 
 }NetInterface;
 

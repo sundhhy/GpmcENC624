@@ -34,9 +34,10 @@ err_t nicNotifyLinkChange( NetInterface *Inet )
 {
 #ifdef DEBUG_NET
 	TRACE_INFO("Drive Piling :%s-%s-%d \r\n", __FILE__, __func__, __LINE__);
+
 	return EXIT_SUCCESS;
 #else
-
+	atomic_set( &Inet->isr_status, ISR_LINK_STATUS_CHG);
 	return EXIT_SUCCESS;
 #endif
 }
@@ -47,16 +48,28 @@ err_t nicProcessPacket( NetInterface * Inet, uint8_t *frame, int len)
 	int	i = 0;
 	TRACE_INFO("Recv %d datas  ", len);
 
-//	for( i = 0; i < len; i ++)
-//	{
-//		if( i % 8 == 0)
-//			TRACE_INFO("\r\n");
-//		TRACE_INFO("0x%02x ", frame[i]);
-//	}
+	for( i = 0; i < len; i ++)
+	{
+		if( i % 8 == 0)
+			TRACE_INFO("\r\n");
+		TRACE_INFO("0x%02x ", frame[i]);
+	}
 	TRACE_INFO("\r\n");
 
 	return EXIT_SUCCESS;
 #else
+//	atomic_set( &Inet->isr_status, ISR_RECV_PACKET);
+
+	int	i = 0;
+	TRACE_INFO("Recv %d datas  ", len);
+
+	for( i = 0; i < len; i ++)
+	{
+		if( i % 8 == 0)
+			TRACE_INFO("\r\n");
+		TRACE_INFO("0x%02x ", frame[i]);
+	}
+	TRACE_INFO("\r\n");
 
 	return EXIT_SUCCESS;
 #endif

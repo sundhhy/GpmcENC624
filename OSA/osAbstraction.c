@@ -12,6 +12,9 @@
 static int RX_event_offset = ( int )&( ( (NetInterface *)0)->nicRxEvent);
 static int TX_event_offset = ( int )&( ( (NetInterface *)0)->nicTxEvent);
 
+
+//#define DEBUG_OSA
+
 err_t osSetEvent( void *event)
 {
 	NetInterface	*i_net;
@@ -51,27 +54,29 @@ int osSetEventFromIsr( void *event)
 	TRACE_INFO("Drive Piling :%s-%s-%d \r\n", __FILE__, __func__, __LINE__);
 	return EXIT_SUCCESS;
 #else
-	NetInterface	*i_net;
-	int offset = 0;
+	NetInterface	*i_net = NULL;
 
 	int *this_event = (int *)event;
+	Dubug_info.event_handle_count ++;
 	if( *this_event == RX_EVENT)
 	{
-		offset = RX_event_offset;
-
+		i_net = ( NetInterface *) ( (int)event - RX_event_offset);
+		atomic_set( &i_net->isr_status, ISR_RX_EVENT);
 	}
 	else if( *this_event == TX_EVENT)
 	{
-		offset = TX_event_offset;
+		i_net = ( NetInterface *) ( (int)event - TX_event_offset);
+		atomic_set( &i_net->isr_status, ISR_TX_EVENT);
 
 	}
 	else
 	{
+
 		return EXIT_FAILURE;
 	}
 
-	i_net = ( NetInterface *) ( (int)event - offset);
-	enc624j600Driver.EventHandler( i_net);
+
+
 	return EXIT_SUCCESS;
 
 #endif

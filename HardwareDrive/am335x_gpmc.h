@@ -160,7 +160,7 @@ typedef struct {
 //	bool		cs_extra_dealy;			//cs信号额外的半个FCLK的延时
 	char		cs_ontime_ns;
 	char		cycle2cycle_delay_ns;	//连续访问时的时间间隔
-
+	char		bursturna_round;		//
 	char 		rese[2];
 
 }gpmc_common_timing;
