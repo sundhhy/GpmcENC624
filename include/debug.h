@@ -7,7 +7,6 @@
 
 #ifndef DEBUG_H_
 #define DEBUG_H_
-
 #define	DEBUG_DRIVE_LEVEL
 #define DEBUG_SWITCH
 #include <stdio.h>
@@ -35,6 +34,7 @@ typedef struct {
 	uint32_t		event_count[2];
 	uint32_t		event_handle_count;
 }Sys_deginfo;
+
 
 extern Sys_deginfo		Dubug_info;
 //#define DEBUG_ONLY_GPIO_INIT			//调试GPIO配置的时候出现SIGBUS的问题

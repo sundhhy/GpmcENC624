@@ -43,6 +43,7 @@ const uint8_t GpioIntNum[2][4] =
 const uint32_t	GpioBase[4] =
 { AM335X_GPIO0_BASE, AM335X_GPIO1_BASE, AM335X_GPIO2_BASE, AM335X_GPIO3_BASE};
 
+
 static err_t gpio_init(Drive_Gpio *t)
 {
 	Drive_Gpio 		*cthis = ( Drive_Gpio *)t ;
@@ -111,6 +112,7 @@ static err_t gpio_init(Drive_Gpio *t)
 	SIGEV_INTR_INIT( &Gpio_event );
 	cthis->irq_id = InterruptAttach_r ( GpioIntNum[ config->intr_line][ config->pin_group], gpioExtInteIsr, cthis, 1, _NTO_INTR_FLAGS_END );
 	return EXIT_SUCCESS;
+
 #endif
 }
 
@@ -126,6 +128,7 @@ static err_t gpio_enableIrq(Drive_Gpio *t)
 	tmp_reg |= 1 << cthis->config->pin_number;
 	out32(cthis->gpio_vbase + GPIO_IRQSTATUS_SET( cthis->config->intr_line), tmp_reg);
 	return EXIT_SUCCESS;
+
 #endif
 }
 
@@ -430,10 +433,12 @@ void GPIOModuleDisable(uintptr_t baseAdd)
 }
 
 
+
 CTOR(Drive_Gpio)
 
 FUNCTION_SETTING(init, gpio_init);
 FUNCTION_SETTING(enableIrq, gpio_enableIrq);
 FUNCTION_SETTING(disableIrq, gpio_disableIrq);
 FUNCTION_SETTING(deatory, gpio_destory);
+
 END_CTOR

@@ -477,12 +477,12 @@ typedef struct
 
 
 
+
 struct rsv {
 	uint16_t next_packet;
 	uint16_t len;
 	uint32_t rxstat;
 };
-
 
 
 typedef struct NIC_drive
@@ -498,6 +498,7 @@ typedef struct NIC_drive
 	err_t 	( *SetMacFilter)(NetInterface *interface);
 	err_t 	( *SendPacket)(NetInterface *interface, const NetBuffer *buffer, size_t offset);
 	err_t 	( *destory)(NetInterface *interface);
+
 
 	void 	*unkonw2;
 	bool	bool_xx1;
@@ -528,6 +529,7 @@ err_t enc624j600SendPacket(NetInterface *interface,
 err_t enc624j600ReceivePacket(NetInterface *interface,
    uint8_t *buffer, size_t size, size_t *length);
 err_t enc624_PSP_ReceivePacket(NetInterface *interface,
+
    uint8_t *buffer, size_t size, size_t *length);
 
 void enc624j600ConfigureDuplexMode(NetInterface *interface);

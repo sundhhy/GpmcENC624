@@ -1,6 +1,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+
 #include <unistd.h>
 #include <sys/neutrino.h>
 #include <errno.h>
@@ -160,6 +161,7 @@ static err_t create_net_interface( int  instance)
 
 	sprintf( Inet[ instance]->name, "eth%d", instance);
 
+
 	return EXIT_SUCCESS;
 
 err3:
@@ -295,3 +297,7 @@ static void show_debug_info( Sys_deginfo *info)
 	}
 
 }
+
+
+
+

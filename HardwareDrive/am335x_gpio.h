@@ -25,6 +25,7 @@
 #define 	GPIO_IRQSTATUS_SET(n)   (GPIO_IRQSTATUS_SET_0 + (n * 4))
 #define 	GPIO_GPIO_IRQSTATUS(n)   (GPIO_IRQSTATUS_0 + (n * 4))
 
+
 CLASS(Drive_Gpio)
 {
 
@@ -41,28 +42,21 @@ CLASS(Drive_Gpio)
 	uintptr_t			gpio_vbase;
 	gpio_cfg			*config;
 
-
-
-
-
-
-
-
 };
 
 
 typedef enum {
 	//for drives management
 	ERROR_GPIO_BEGIN = ERROR_BEGIN(DRIVE_GPIO),
-
 	gpio_init_mapio_fail,
 
 
 
 
 
-}err_gpio_t;
 
+}err_gpio_t;
 const struct sigevent *gpioExtInteIsr (void *area, int id);
 //extern struct sigevent	Gpio_event;
+
 #endif /* AM335X_GPIO_H_ */

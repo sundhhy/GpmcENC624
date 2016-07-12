@@ -45,9 +45,6 @@ MSB  ----------|----------- LSB
 #define HAL_ENC624	0x80
 #define DRIVE_GPMC	0x90
 #define DRIVE_GPIO	0x91
-
-
-
 #define CHECK_ERROR( return_val, msg) { \
 	if( return_val != 0) { \
 		fprintf( stderr, "%s:%s \n", msg, strerror(return_val)); \

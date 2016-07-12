@@ -11,6 +11,7 @@
 #include "am335x_gpio.h"
 #include "pin_mux.h"
 
+
 gpmc_chip_cfg Gpmc_cfg_c2 ={
 		0x19000000,
 		0x1000000,		//16M
@@ -48,6 +49,7 @@ gpmc_chip_cfg Gpmc_cfg_c3 ={
 
 };
 
+
 //		group;
 //		number;
 //		intr_type;
@@ -74,4 +76,5 @@ gpio_cfg Enc624_extern_intr1 ={
 		1,
 		conf_ecap0_in_pwm0_out,
 };
+
 

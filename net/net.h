@@ -31,6 +31,7 @@
 #define		ISR_RECV_PACKET ( 1 << 3)
 
 #define		ISR_ERROR ( 1 << 31)
+
 typedef struct
 {
 	char addr[6];
@@ -74,10 +75,13 @@ typedef struct
 	pthread_t				tid;
 	volatile uint32_t		isr_status;
 
+
 }NetInterface;
 
 err_t macCompAddr( MacAddr_u16 *mac1, MacAddr_u16 *mac2);
 err_t nicNotifyLinkChange( NetInterface *Inet );
 err_t nicProcessPacket( NetInterface * Inet, uint8_t *frame, int len);
+
 int netBufferGetLength( const NetBuffer *net_buf);
+
 #endif /* NET_METHOD_H_ */

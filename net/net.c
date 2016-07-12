@@ -78,11 +78,14 @@ err_t nicProcessPacket( NetInterface * Inet, uint8_t *frame, int len)
 int netBufferGetLength( const NetBuffer *net_buf)
 {
 #ifdef DEBUG_NET
+=======
 	TRACE_INFO("Drive Piling :%s-%s-%d \r\n", __FILE__, __func__, __LINE__);
 	return EXIT_SUCCESS;
 #else
 
+
 	return EXIT_SUCCESS;
+
 #endif
 }
 

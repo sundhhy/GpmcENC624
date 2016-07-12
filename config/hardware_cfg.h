@@ -26,14 +26,15 @@ typedef struct gpmc_config {
 	char		write_multiple;
 	char		write_type;
 	bool 		use_dma;
-
 	char		rese[3];
+
 
 
 
 }gpmc_chip_cfg;
 
 typedef struct gpio_config {
+
 	//GPIOg_n
 	uint8_t		pin_group;			//引脚组号
 	uint8_t		pin_number;			//引脚组内序号
@@ -42,12 +43,15 @@ typedef struct gpio_config {
 	uint8_t		debou_time;
 	uint8_t		instance;
 	uint16_t	pin_ctrl_off;
+
 }gpio_cfg;
+
 
 
 
 extern gpio_cfg Enc624_extern_intr0;
 extern gpio_cfg Enc624_extern_intr1;
+
 extern gpmc_chip_cfg Gpmc_cfg_c2;
 extern gpmc_chip_cfg Gpmc_cfg_c3;
 #endif /* HARDWARE_CFG_H_ */

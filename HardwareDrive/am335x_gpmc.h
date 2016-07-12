@@ -99,8 +99,8 @@
 #define GPMC_TICK_NS		10				//GPMC的FCLK的频率是100MHz，不分频的情况下，每个FCLK时钟滴答是10ns
 //#define NS_TO_TICK( ns)    ( ns / GPMC_TICK_NS == 0)? 1: (ns / GPMC_TICK_NS)
 #define NS_TO_TICK( ns)	(ns / GPMC_TICK_NS)
-
 typedef uintptr_t SINGLETON;
+
 CLASS(Drive_Gpmc)
 {
 
@@ -120,11 +120,6 @@ CLASS(Drive_Gpmc)
 	gpmc_chip_cfg		*config;
 	uint32_t			cs_regoffset;
 //	uint16_t			rese;
-
-
-
-
-
 
 };
 

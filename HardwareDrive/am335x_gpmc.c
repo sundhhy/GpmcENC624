@@ -12,6 +12,7 @@
 #include "debug.h"
 #include <hw/inout.h>
 
+
 #define GPMC_RD32_REG(cthis, reg) in32(  cthis->gpmc_vbase + cthis->cs_regoffset + reg)
 #define GPMC_WR32_REG(cthis, reg, val) out32(  cthis->gpmc_vbase + cthis->cs_regoffset + reg, val)
 static char Vbase_reference = 0;
@@ -42,16 +43,16 @@ const uint16_t	Gpmc_config_offset[] = {
 		OMAP2420_GPMC_CS6,OMAP2420_GPMC_CS7
 };
 
+
 static SINGLETON get_single_vbase( void);
 static SINGLETON free_single_vbase( void);
+
 static void set_rdtiming( Drive_Gpmc *cthis, gpmc_rd_timing *timing_cfg);
 static void set_wrtiming( Drive_Gpmc *cthis, gpmc_wr_timing *timing_cfg);
 static void set_comtiming( Drive_Gpmc *cthis, gpmc_common_timing *timing_cfg);
 
 static err_t gpmc_init(Drive_Gpmc *t, void *arg)
 {
-
-
 	Drive_Gpmc 		*cthis = ( Drive_Gpmc *)t ;
 	uintptr_t		pAddr;
 #ifdef GPMC_PRINT
@@ -242,7 +243,7 @@ static err_t gpmc_assertCs(Drive_Gpmc  *t)
 	TRACE_INFO("Drive Piling :%s-%s-%d \r\n", __FILE__, __func__, __LINE__);
 	return EXIT_SUCCESS;
 #else
-
+	return EXIT_SUCCESS;
 #endif
 
 }
@@ -298,7 +299,13 @@ static err_t gpmc_deassertCs( Drive_Gpmc  *t)
 	return EXIT_SUCCESS;
 #endif
 
+
+
+
+
 }
+
+
 
 CTOR(Drive_Gpmc)
 
