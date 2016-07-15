@@ -189,7 +189,7 @@ err_t enc624j600Init(NetInterface *interface)
       PHANA_AD100FD | PHANA_AD100 | PHANA_AD10FD | PHANA_AD10 | PHANA_ADIEEE0);
 
    //sundh add
-//   enc624j600WritePhyReg(interface, ENC624J600_PHY_REG_PHCON1, PHCON1_ANEN | PHCON1_RENEG );
+   enc624j600WritePhyReg(interface, ENC624J600_PHY_REG_PHCON1, PHCON1_ANEN | PHCON1_RENEG );
 
    //Clear interrupt flags
    WriteReg[I_type](interface, ENC624J600_REG_EIR, 0x0000);
@@ -418,7 +418,7 @@ void enc624j600EventHandler(NetInterface *interface)
          enc624j600ConfigureDuplexMode(interface);
 
          //Display link state
-         TRACE_INFO("Link is up (%s)...\r\n", interface->name);
+         TRACE_INFO("Link is up (%s)... ", interface->name);
 
          //Display actual speed and duplex mode
          TRACE_INFO("%s %s\r\n",
@@ -448,6 +448,8 @@ void enc624j600EventHandler(NetInterface *interface)
       do
       {
          //Read incoming packet
+    	  if( interface->ethFrame == NULL)
+    		  break;
          error = enc624_PSP_ReceivePacket(interface,
             interface->ethFrame, ETH_MAX_FRAME_SIZE, &length);
 
@@ -527,6 +529,7 @@ err_t enc624j600SendPacket(NetInterface *interface,
    const NetBuffer *buffer, size_t offset)
 {
    size_t length;
+   uint16_t			point;
 
    //Retrieve the length of the packet
    length = netBufferGetLength(buffer) - offset;
@@ -553,10 +556,15 @@ err_t enc624j600SendPacket(NetInterface *interface,
    if(ReadReg[ I_type](interface, ENC624J600_REG_ECON1) & ECON1_TXRTS)
       return ERROR_FAILURE;
 
+
+   point = ENC624J600_TX_BUFFER_START;
+   enc624_PSP_WriteSram(interface, &point, buffer, offset);
+
    //Point to the SRAM buffer
-   WriteReg[I_type](interface, ENC624J600_REG_EGPWRPT, ENC624J600_TX_BUFFER_START);
+//   WriteReg[I_type](interface, ENC624J600_REG_EGPWRPT, ENC624J600_TX_BUFFER_START);
    //Copy the packet to the SRAM buffer
-   enc624j600WriteBuffer(interface, ENC624J600_CMD_WGPDATA, buffer, offset);
+//   enc624j600WriteBuffer(interface, ENC624J600_CMD_WGPDATA, buffer, offset);
+
 
    //Program ETXST to the start address of the packet
    WriteReg[I_type](interface, ENC624J600_REG_ETXST, ENC624J600_TX_BUFFER_START);
@@ -625,7 +633,7 @@ err_t enc624_PSP_ReceivePacket(NetInterface *interface,
 		 //The received packet contains an error
 		 error = ERROR_INVALID_PACKET;
 	  }
-
+	  context->nextPacketPointer = rsv.next_packet;
 	  //Update the ERXTAIL pointer value to the point where the packet
 	  //has been processed, taking care to wrap back at the end of the
 	  //received memory buffer
@@ -633,6 +641,7 @@ err_t enc624_PSP_ReceivePacket(NetInterface *interface,
 		 WriteReg[I_type](interface, ENC624J600_REG_ERXTAIL, ENC624J600_RX_BUFFER_STOP);
 	  else
 		 WriteReg[I_type](interface, ENC624J600_REG_ERXTAIL, rsv.next_packet - 2);
+
 
 	  //Set PKTDEC to decrement the PKTCNT bits
 	  SetBit[ I_type](interface, ENC624J600_REG_ECON1, ECON1_PKTDEC);
@@ -795,10 +804,10 @@ uint16_t enc624_PSP_ReadReg(NetInterface *interface, uint8_t address)
 	return data;
 
 }
-uint16_t enc624j600ReadReg(NetInterface *interface, uint8_t address)
-{
+//uint16_t enc624j600ReadReg(NetInterface *interface, uint8_t address)
+//{
 	//todo SPI接口根据后期需要再去实现
-   uint16_t data = 0;
+//   uint16_t data = 0;
 
 
    //Pull the CS pin low
@@ -818,7 +827,7 @@ uint16_t enc624j600ReadReg(NetInterface *interface, uint8_t address)
 
    //Return register contents
 
-}
+//}
 
 
 /**
@@ -874,6 +883,41 @@ uint16_t enc624j600ReadPhyReg(NetInterface *interface, uint8_t address)
  * @param[in] buffer Multi-part buffer containing the data to be written
  * @param[in] offset Offset to the first data byte
  **/
+
+void enc624_PSP_WriteSram(NetInterface *interface,
+   uint16_t *address, const NetBuffer *buffer, size_t offset)
+{
+	int i;
+//   for(i = 0; i < buffer->chunkCount; i++)
+//   {
+//      //Is there any data to copy from the current chunk?
+//      if(offset < buffer->chunk[i].length)
+//      {
+//         //Point to the first byte to be read
+//         p = (uint8_t *) buffer->chunk[i].address + offset;
+//         //Compute the number of bytes to copy at a time
+//         n = buffer->chunk[i].length - offset;
+//
+//         //Copy data to SRAM buffer
+//         for(j = 0; j < n; j++)
+//            interface->busDriver->write_u8( interface->busDriver, p[j]);
+//
+//         //Process the next block from the start
+//         offset = 0;
+//      }
+//      else
+//      {
+//         //Skip the current chunk
+//         offset -= buffer->chunk[i].length;
+//      }
+//   }
+
+
+	for( i = 0; i < buffer->len; i ++) {
+		interface->busDriver->write_u8( interface->busDriver, *address, buffer->data[i + offset]);
+		*address = *address + 1;
+	}
+}
 
 void enc624j600WriteBuffer(NetInterface *interface,
    uint8_t opcode, const NetBuffer *buffer, size_t offset)

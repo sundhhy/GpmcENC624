@@ -544,9 +544,10 @@ uint16_t enc624j600ReadPhyReg(NetInterface *interface, uint8_t address);
 
 void enc624j600WriteBuffer(NetInterface *interface,
    uint8_t opcode, const NetBuffer *buffer, size_t offset);
-
 void enc624j600ReadBuffer(NetInterface *interface,
    uint8_t opcode, uint8_t *data, size_t length);
+void enc624_PSP_WriteSram(NetInterface *interface,
+   uint16_t *address, const NetBuffer *buffer, size_t offset);
 void enc624_PSP_ReadSram(NetInterface *interface,
    uint16_t *address, uint8_t *data, size_t length);
 

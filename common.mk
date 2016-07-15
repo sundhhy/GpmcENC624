@@ -12,12 +12,14 @@ USEFILE=
 
 #===== EXTRA_INCVPATH - a space-separated list of directories to search for include files.
 EXTRA_INCVPATH+=$(PROJECT_ROOT)/include $(PROJECT_ROOT)/net  \
-	$(PROJECT_ROOT)/OSA $(PROJECT_ROOT)/config
+	$(PROJECT_ROOT)/OSA $(PROJECT_ROOT)/config  \
+	$(PROJECT_ROOT)/net/ethernet
 
 #===== EXTRA_SRCVPATH - a space-separated list of directories to search for source files.
 EXTRA_SRCVPATH+=$(PROJECT_ROOT)/HAL  \
 	$(PROJECT_ROOT)/HardwareDrive $(PROJECT_ROOT)/net  \
-	$(PROJECT_ROOT)/OSA $(PROJECT_ROOT)/config
+	$(PROJECT_ROOT)/OSA $(PROJECT_ROOT)/config  \
+	$(PROJECT_ROOT)/net/ethernet
 
 include $(MKFILES_ROOT)/qmacros.mk
 ifndef QNX_INTERNAL

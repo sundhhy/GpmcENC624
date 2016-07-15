@@ -11,9 +11,11 @@
 #include <stdbool.h>
 #include <fcntl.h>
 #include "debug.h"
+#include "memp.h"
+#include "pbuf.h"
 
 
-
+static void cleanup(void *arg);
 static err_t create_net_interface( int  instance);
 static err_t destory_net_interface( int  instance);
 static void MyHandler( int sig_number );
@@ -24,7 +26,9 @@ static void* enc_drive_main(void *arg);
 NetInterface	*Inet[2];
 bool	Running = true;
 
+
 Sys_deginfo		Dubug_info;
+
 
 
 
@@ -32,10 +36,12 @@ Sys_deginfo		Dubug_info;
 int main(int argc, char *argv[])
 {
 	err_t ret = 0;
-	int i = 0, count = 0;
+	uint32_t i = 0, count = 0;
+	uint32_t *p_u32;
 	char opt;
 	uint8_t 	instance;
-
+	NetBuffer		send_buffer;
+	struct pbuf *p;
 	if(ThreadCtl(_NTO_TCTL_IO, 0) != EOK)
 	{
 		printf("You must be root.");
@@ -49,6 +55,9 @@ int main(int argc, char *argv[])
 	signal(SIGCHLD,SIG_IGN);
 	signal(SIGUSR1,MyHandler);
 	signal(SIGTERM,MyHandler);
+
+
+	memp_init();
 
 	for( i = 0; i < 2; i++)
 	{
@@ -91,26 +100,24 @@ int main(int argc, char *argv[])
 
 		count ++;
 
-		show_debug_info( &Dubug_info);
+//		show_debug_info( &Dubug_info);
 		if( count %40 == 0)
 		{
-//
-////
-			printf(" run ... \n");
-//			enc624j600_print_reg( Inet[ 0], ENC624J600_REG_ESTAT);
-//			enc624j600_print_reg( Inet[ 0], ENC624J600_REG_EIR);
-//			enc624j600_print_reg( Inet[ 0], ENC624J600_REG_EIE);
-//
-//
-//
-//			//Display actual speed and duplex mode
-//			TRACE_DEBUG("%s %s\r\n",
-//					Inet[ 0]->speed100 ? "100BASE-TX" : "10BASE-T",
-//							Inet[ 0]->fullDuplex ? "Full-Duplex" : "Half-Duplex");
-//
-//
-////			enc624j600DumpReg(Inet[ 0]);
-////			enc624j600DumpPhyReg(Inet[ 0]);
+
+			if( Inet[0]->linkState)
+			{
+				p = (struct pbuf *)Inet[0]->txbuf;
+				send_buffer.data = p->payload;
+				memset( send_buffer.data, 0xff, 6);
+				memcpy( send_buffer.data + 6, &Inet[0]->macAddr, 6);
+				p_u32 = ( uint32_t *)(send_buffer.data + 16);
+				*p_u32 = count;
+
+				send_buffer.len = 1514;
+				enc624j600Driver.SendPacket( Inet[0], &send_buffer, 0);
+			}
+
+			printf(" run %04x ... \n", *p_u32 );
 		}
 
 		delay(100);
@@ -132,6 +139,82 @@ int main(int argc, char *argv[])
 	return EXIT_SUCCESS;
 }
 
+
+static void* enc_drive_main(void *arg)
+{
+	NetInterface *inet = ( NetInterface *)arg;
+	err_t	ret = 0;
+	NetBuffer		send_buffer;
+	struct pbuf *p_rxbuf;
+	struct pbuf *p_txbuf = pbuf_alloc( PBUF_RAW, ETH_MTU, PBUF_POOL);
+	inet->txbuf = (void *)p_txbuf;
+	ret = enc624j600Driver.Init( inet);
+	if( ret)
+		return NULL;
+
+	while(1)
+	{
+		enc624j600Driver.EnableIrq( inet);
+		pthread_cleanup_push(cleanup, (void *)inet);
+
+		InterruptWait_r(NULL, NULL);
+		enc624j600Driver.DisableIrq( inet);
+//		printf(" isr happened \n");
+		if( inet->isr_status & ISR_RX_EVENT)
+		{
+			atomic_clr( &inet->isr_status, ISR_RX_EVENT);
+			p_rxbuf = pbuf_alloc( PBUF_RAW, ETH_MTU, PBUF_POOL);
+			if( p_rxbuf != NULL)
+			{
+				delay(1);
+				inet->ethFrame = p_rxbuf->payload;
+				enc624j600Driver.EventHandler( inet);
+
+
+				send_buffer.data = p_rxbuf->payload;
+				send_buffer.len = p_rxbuf->len;
+
+				enc624j600Driver.SendPacket( inet, &send_buffer, 0);
+				pbuf_free( p_rxbuf);
+
+			}
+			else
+			{
+				TRACE_INFO("pbuf_alloc fail \r\n");
+
+			}
+
+
+		}
+		if(  inet->isr_status & ISR_TX_EVENT)
+		{
+			atomic_clr( &inet->isr_status, ISR_TX_EVENT);
+			enc624j600Driver.EventHandler( inet);
+
+		}
+		if(  inet->isr_status & ISR_LINK_STATUS_CHG)
+		{
+			atomic_clr( &inet->isr_status, ISR_LINK_STATUS_CHG);
+			enc624j600Driver.EventHandler( inet);
+
+
+
+		}
+		if(  inet->isr_status & ISR_ERROR)
+		{
+			atomic_clr( &inet->isr_status, ISR_ERROR);
+			printf(" ISR_ERROR happened \n");
+		}
+
+		pthread_cleanup_pop(0);
+	}
+
+
+
+
+
+}
+
 static err_t create_net_interface( int  instance)
 {
 	Inet[ instance] = malloc( sizeof(NetInterface));
@@ -144,9 +227,7 @@ static err_t create_net_interface( int  instance)
 	if( Inet[ instance]->nicContext == NULL)
 			goto err2;
 
-	Inet[ instance]->ethFrame = malloc( 2*1024);		//24k
-	if( Inet[ instance]->ethFrame == NULL)
-				goto err3;
+
 
 
 	Inet[ instance]->instance = instance;
@@ -164,8 +245,7 @@ static err_t create_net_interface( int  instance)
 
 	return EXIT_SUCCESS;
 
-err3:
-	free( Inet[ instance]->nicContext);
+
 err2:
 	free( Inet[ instance]);
 err1:
@@ -175,67 +255,18 @@ err1:
 
 static void cleanup(void *arg)
 {
+
 	NetInterface *inet = ( NetInterface *)arg;
+	struct pbuf *p_txbuf = (struct pbuf *)inet->txbuf;
 	printf("net drive %s thread exit \n", inet->name );
 
+	pbuf_free( p_txbuf);
 	enc624j600Driver.destory( inet);
 	destory_net_interface( inet->instance);
 
 }
 
-static void* enc_drive_main(void *arg)
-{
-	NetInterface *inet = ( NetInterface *)arg;
-	err_t	ret = 0;
 
-
-
-	ret = enc624j600Driver.Init( inet);
-	if( ret)
-		return NULL;
-
-
-
-	while(1)
-	{
-		enc624j600Driver.EnableIrq( inet);
-		pthread_cleanup_push(cleanup, (void *)inet);
-
-		InterruptWait_r(NULL, NULL);
-		enc624j600Driver.DisableIrq( inet);
-//		printf(" isr happened \n");
-		if( inet->isr_status & ISR_RX_EVENT)
-		{
-			atomic_clr( &inet->isr_status, ISR_RX_EVENT);
-			enc624j600Driver.EventHandler( inet);
-
-		}
-		else if(  inet->isr_status & ISR_TX_EVENT)
-		{
-			atomic_clr( &inet->isr_status, ISR_TX_EVENT);
-			enc624j600Driver.EventHandler( inet);
-
-		}
-		else if(  inet->isr_status & ISR_LINK_STATUS_CHG)
-		{
-			atomic_clr( &inet->isr_status, ISR_LINK_STATUS_CHG);
-			enc624j600Driver.EventHandler( inet);
-
-		}
-		else if(  inet->isr_status & ISR_ERROR)
-		{
-			atomic_clr( &inet->isr_status, ISR_ERROR);
-			printf(" ISR_ERROR happened \n");
-		}
-
-		pthread_cleanup_pop(0);
-	}
-
-
-
-
-
-}
 
 static err_t destory_net_interface( int  instance)
 {

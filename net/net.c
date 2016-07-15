@@ -9,8 +9,10 @@
 
 #include "net.h"
 #include "debug.h"
+#include "pbuf.h"
 
 //#define DEBUG_NET
+const static int  PBUF_PLAYLOAD_OFFSWT =  ( int)&( ( ( struct pbuf *)0)->payload);
 
 err_t macCompAddr( MacAddr_u16 *mac1, MacAddr_u16 *mac2)
 {
@@ -59,13 +61,14 @@ err_t nicProcessPacket( NetInterface * Inet, uint8_t *frame, int len)
 	return EXIT_SUCCESS;
 #else
 //	atomic_set( &Inet->isr_status, ISR_RECV_PACKET);
-
+	struct pbuf *p_buf = ( struct pbuf *) ( (int)frame - PBUF_PLAYLOAD_OFFSWT);
 	int	i = 0;
-	TRACE_INFO("Recv %d datas  ", len);
+	p_buf->len = len;
+	TRACE_INFO("%s Recv %d datas  ", Inet->name, len);
 
 	for( i = 0; i < len; i ++)
 	{
-		if( i % 8 == 0)
+		if( i % 16 == 0)
 			TRACE_INFO("\r\n");
 		TRACE_INFO("0x%02x ", frame[i]);
 	}
@@ -78,13 +81,12 @@ err_t nicProcessPacket( NetInterface * Inet, uint8_t *frame, int len)
 int netBufferGetLength( const NetBuffer *net_buf)
 {
 #ifdef DEBUG_NET
-=======
 	TRACE_INFO("Drive Piling :%s-%s-%d \r\n", __FILE__, __func__, __LINE__);
 	return EXIT_SUCCESS;
 #else
 
 
-	return EXIT_SUCCESS;
+	return net_buf->len;
 
 #endif
 }

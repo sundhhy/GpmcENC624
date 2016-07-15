@@ -45,6 +45,8 @@ typedef struct
 typedef struct
 {
 	uint_t		chunkCount;
+	uint_t		len;
+	uint8_t		*data;
 
 }NetBuffer;
 
@@ -68,12 +70,13 @@ typedef struct
 	bool					linkState;
 	uint8_t					instance;
 
-	//todo 下面的成员的数据类型是临时填充的，现在并不确定。16-07-04
 	int 					nicRxEvent;
 	int						nicTxEvent;
 
 	pthread_t				tid;
 	volatile uint32_t		isr_status;
+
+	void					*txbuf;
 
 
 }NetInterface;
