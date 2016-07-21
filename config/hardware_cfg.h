@@ -11,9 +11,9 @@
 #include <stdint.h>
 #include <stdbool.h>
 typedef struct gpmc_config {
-	uint32_t	base_address;
-	uint32_t	mask_address;
-	uint32_t	enc624_addr_len;
+	uint32_t	base_address;		//访问的物理内存的地址
+	uint32_t	mask_address;		//GPMC的内存地址掩码
+	uint32_t	mmap_size;			//映射的内存长度
 	// GPMC_CONFIG1_n
 	uint8_t		chip_instance;
 	char		device_size;

@@ -8,8 +8,26 @@
 
 #ifndef MEM_CONFIG_H_
 #define MEM_CONFIG_H_
-
+#include <stdint.h>
 #include "mem.h"
+
+#define  CONNECT_INFO_NUM		10
+
+#ifndef LITTLE_ENDIAN
+#define LITTLE_ENDIAN 1234
+#endif
+
+#ifndef BYTE_ORDER
+#define BYTE_ORDER LITTLE_ENDIAN
+#endif
+
+
+//stats
+#define LWIP_STATS			1
+#define ETHARP_STATS		1
+
+
+
 typedef unsigned    char    u8_t;
 typedef signed      char    s8_t;
 typedef unsigned    short   u16_t;
@@ -29,6 +47,8 @@ typedef u32_t           mem_ptr_t;
 #define LWIP_DBG_LEVEL_SERIOUS 0x02 /* memory allocation failures, ... */
 #define LWIP_DBG_TRACE         0x40U
 
+#define ETHARP_DEBUG                    LWIP_DBG_OFF
+
 
 #define MEMP_NUM_RAW_PCB                4
 
@@ -39,7 +59,18 @@ typedef u32_t           mem_ptr_t;
 #define ETH_PAD_SIZE                    0
 #endif
 
+#define LWIP_DBG_LEVEL_ALL     0x00
+#define LWIP_DBG_LEVEL_OFF     LWIP_DBG_LEVEL_ALL /* compatibility define only */
+#define LWIP_DBG_LEVEL_WARNING 0x01 /* bad checksums, dropped packets, ... */
+#define LWIP_DBG_LEVEL_SERIOUS 0x02 /* memory allocation failures, ... */
+#define LWIP_DBG_LEVEL_SEVERE  0x03
+#define LWIP_DBG_MASK_LEVEL    0x03
+#ifndef LWIP_DBG_MIN_LEVEL
+#define LWIP_DBG_MIN_LEVEL              LWIP_DBG_LEVEL_ALL
+#endif
+
 #define MEMCPY(dst,src,len)             memcpy(dst,src,len)
+#define SMEMCPY(dst,src,len)            memcpy(dst,src,len)
 /*
    ----------------------------------
    ---------- Pbuf options ----------
@@ -69,5 +100,11 @@ typedef u32_t           mem_ptr_t;
 #ifndef PBUF_POOL_SIZE
 #define PBUF_POOL_SIZE                  16
 #endif
+
+
+
+#define LWIP_NETIF_LOOPBACK				0
+
+#define	PRE_NET_NAME					"eth"
 
 #endif /* MEM_CONFIG_H_ */

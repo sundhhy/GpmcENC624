@@ -49,33 +49,34 @@ err_t osSetEvent( void *event)
 
 }
 
-int osSetEventFromIsr( void *event)
+int osSetEventFromIsr(void *net_instance, int event)
 {
 
 #ifdef DEBUG_OSA
 	TRACE_INFO("Drive Piling :%s-%s-%d \r\n", __FILE__, __func__, __LINE__);
 	return EXIT_SUCCESS;
 #else
-	NetInterface	*i_net = NULL;
-
-	int *this_event = (int *)event;
+	NetInterface	*i_net = (NetInterface	*)net_instance;
 	Dubug_info.event_handle_count ++;
-	if( *this_event == RX_EVENT)
-	{
-		i_net = ( NetInterface *) ( (int)event - RX_event_offset);
-		atomic_set( &i_net->isr_status, ISR_RX_EVENT);
-	}
-	else if( *this_event == TX_EVENT)
-	{
-		i_net = ( NetInterface *) ( (int)event - TX_event_offset);
-		atomic_set( &i_net->isr_status, ISR_TX_EVENT);
 
-	}
-	else
-	{
+	atomic_set( &i_net->isr_status, event);
 
-		return EXIT_FAILURE;
-	}
+//	if(event == ISR_LINK_STATUS_CHG)
+//	{
+//		i_net = ( NetInterface *) ( (int)event - RX_event_offset);
+//		atomic_set( &i_net->isr_status, event);
+//	}
+//	else if( *this_event == TX_EVENT)
+//	{
+//		i_net = ( NetInterface *) ( (int)event - TX_event_offset);
+//		atomic_set( &i_net->isr_status, ISR_TX_EVENT);
+//
+//	}
+//	else
+//	{
+//
+//		return EXIT_FAILURE;
+//	}
 
 
 

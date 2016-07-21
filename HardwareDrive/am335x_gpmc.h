@@ -109,8 +109,7 @@ CLASS(Drive_Gpmc)
 	err_t 	(*init)(Drive_Gpmc * , void * );
 	err_t	( *destory)( Drive_Gpmc *);
 
-	err_t	(*assertCs)(Drive_Gpmc *);
-	err_t	(*deassertCs)(Drive_Gpmc *);
+
 
 	err_t	(*write_u8)(Drive_Gpmc *, uint32_t , uint8_t );
 	uint8_t	(*read_u8)(Drive_Gpmc *, uint32_t );

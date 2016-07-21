@@ -29,6 +29,7 @@
 #define		ISR_RX_EVENT ( 1 << 1)
 #define		ISR_LINK_STATUS_CHG ( 1 << 2)
 #define		ISR_RECV_PACKET ( 1 << 3)
+#define		ISR_TRAN_COMPLETE ( 1 << 4)
 
 #define		ISR_ERROR ( 1 << 31)
 
@@ -58,7 +59,7 @@ typedef struct
 	void 					*nicContext;
 
 	unsigned int			macFilterSize;
-	MacAddr					*macFilter;
+	MacAddr_u16					*macFilter;
 
 	MacAddr_u16				macAddr;
 
@@ -75,13 +76,12 @@ typedef struct
 
 	pthread_t				tid;
 	volatile uint32_t		isr_status;
-
-	void					*txbuf;
-
+	void					*rxpbuf;
+	void					*hl_netif;		//上一层的网络接口
 
 }NetInterface;
 
-err_t macCompAddr( MacAddr_u16 *mac1, MacAddr_u16 *mac2);
+err_t macCompAddr( void *mac1, void *mac2);
 err_t nicNotifyLinkChange( NetInterface *Inet );
 err_t nicProcessPacket( NetInterface * Inet, uint8_t *frame, int len);
 

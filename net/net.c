@@ -10,11 +10,13 @@
 #include "net.h"
 #include "debug.h"
 #include "pbuf.h"
-
+#include <time.h>
+#include "netif.h"
+#include "etharp.h"
 //#define DEBUG_NET
-const static int  PBUF_PLAYLOAD_OFFSWT =  ( int)&( ( ( struct pbuf *)0)->payload);
+const static int  NETIF_INET_OFFSWT =  ( int)&( ( ( struct netif *)0)->ll_netif);
 
-err_t macCompAddr( MacAddr_u16 *mac1, MacAddr_u16 *mac2)
+err_t macCompAddr( void *mac1, void *mac2)
 {
 	int i;
 	uint8_t  *addr1 = (uint8_t *)mac1;
@@ -47,32 +49,33 @@ err_t nicNotifyLinkChange( NetInterface *Inet )
 err_t nicProcessPacket( NetInterface * Inet, uint8_t *frame, int len)
 {
 #ifdef DEBUG_NET
-	int	i = 0;
-	TRACE_INFO("Recv %d datas  ", len);
+	int i;
+	struct pbuf *p_buf = ( struct pbuf *) ( Inet->rxpbuf);
+	uint8_t		*data = (uint8_t *) p_buf->payload;
+	TRACE_INFO("%s Recv %d datas  ", Inet->name,  p_buf->len);
 
-	for( i = 0; i < len; i ++)
-	{
-		if( i % 8 == 0)
-			TRACE_INFO("\r\n");
-		TRACE_INFO("0x%02x ", frame[i]);
-	}
-	TRACE_INFO("\r\n");
-
-	return EXIT_SUCCESS;
-#else
-//	atomic_set( &Inet->isr_status, ISR_RECV_PACKET);
-	struct pbuf *p_buf = ( struct pbuf *) ( (int)frame - PBUF_PLAYLOAD_OFFSWT);
-	int	i = 0;
-	p_buf->len = len;
-	TRACE_INFO("%s Recv %d datas  ", Inet->name, len);
-
-	for( i = 0; i < len; i ++)
+	for( i = 0; i < p_buf->len; i ++)
 	{
 		if( i % 16 == 0)
 			TRACE_INFO("\r\n");
-		TRACE_INFO("0x%02x ", frame[i]);
+		TRACE_INFO("0x%02x ", data[i]);
 	}
 	TRACE_INFO("\r\n");
+	return EXIT_SUCCESS;
+#else
+	struct pbuf *p_buf = ( struct pbuf *) ( Inet->rxpbuf);
+	struct netif *pnet = ( struct netif *) ( Inet->hl_netif);
+	p_buf->len = len;
+
+	ethernet_input( p_buf, pnet);
+
+
+//	switch( *protocol)
+//	{
+//		case
+//	}
+
+
 
 	return EXIT_SUCCESS;
 #endif
@@ -90,6 +93,9 @@ int netBufferGetLength( const NetBuffer *net_buf)
 
 #endif
 }
+
+
+
 
 
 

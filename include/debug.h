@@ -56,9 +56,8 @@ typedef struct {
 
 
 
-//#define LWIP_DEBUGF(debug, message) \
-//	{ if( debug)  TRACE_DEBUG(message);}
 #define LWIP_DEBUGF(debug, message)
+
 
 #define LWIP_ASSERT(message, assertion) do { if(!(assertion)) \
 		TRACE_DEBUG(message); \

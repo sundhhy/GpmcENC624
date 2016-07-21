@@ -104,7 +104,7 @@ static err_t gpmc_init(Drive_Gpmc *t, void *arg)
 	SET_CSVALID( tmp_reg, 1);
 	GPMC_WR32_REG( cthis, OMAP2420_GPMC_CONFIG7, tmp_reg);
 
-	pAddr =  mmap_device_io( cthis->config->enc624_addr_len, cthis->config->base_address);
+	pAddr =  mmap_device_io( cthis->config->mmap_size, cthis->config->base_address);
 	if ( pAddr == MAP_DEVICE_FAILED)
 	{
 		munmap_device_io( cthis->gpmc_vbase, OMAP3530_GPMC_SIZE);
@@ -121,17 +121,7 @@ static err_t gpmc_init(Drive_Gpmc *t, void *arg)
 //	printf("GPMC_CONFIG6 :0x%x\n",GPMC_RD32_REG( cthis, OMAP2420_GPMC_CONFIG6));
 //	printf("GPMC_CONFIG7 :0x%x\n",GPMC_RD32_REG( cthis, OMAP2420_GPMC_CONFIG7));
 
-	/*
 
-		GPMC_CONFIG1 :0x1000
-		GPMC_CONFIG2 :0x101001
-		GPMC_CONFIG3 :0x22060514
-		GPMC_CONFIG4 :0x10057016
-		GPMC_CONFIG5 :0x10f1111
-		GPMC_CONFIG6 :0x8f070000
-		GPMC_CONFIG7 :0xf00
-
-	 */
 
 
 	return EXIT_SUCCESS;
@@ -144,7 +134,7 @@ static err_t gpmc_init(Drive_Gpmc *t, void *arg)
 static err_t gpmc_destory(Drive_Gpmc *t)
 {
 	Drive_Gpmc 		*cthis = ( Drive_Gpmc *)t ;
-	munmap_device_io( ( uintptr_t )cthis->p_enc624, cthis->config->enc624_addr_len);
+	munmap_device_io( ( uintptr_t )cthis->p_enc624, cthis->config->mmap_size);
 	free_single_vbase();
 	lw_oopc_delete( cthis);
 	return EXIT_SUCCESS;
@@ -236,17 +226,7 @@ static void set_comtiming( Drive_Gpmc *cthis, gpmc_common_timing *timing_cfg)
 	GPMC_WR32_REG( cthis, OMAP2420_GPMC_CONFIG3, 0);		//ADV²»ÐèÒª
 }
 
-static err_t gpmc_assertCs(Drive_Gpmc  *t)
-{
-	Drive_Gpmc 		*cthis = ( Drive_Gpmc *)t ;
-#ifdef GPMC_PRINT
-	TRACE_INFO("Drive Piling :%s-%s-%d \r\n", __FILE__, __func__, __LINE__);
-	return EXIT_SUCCESS;
-#else
-	return EXIT_SUCCESS;
-#endif
 
-}
 
 
 static err_t gpmc_write_u8( Drive_Gpmc  *t,  uint32_t addr, uint8_t data)
@@ -288,22 +268,7 @@ static uint8_t gpmc_read_u8( Drive_Gpmc  *t, uint32_t addr)
 
 }
 
-static err_t gpmc_deassertCs( Drive_Gpmc  *t)
-{
-	Drive_Gpmc 		*cthis = ( Drive_Gpmc *)t ;
-#ifdef GPMC_PRINT
-	TRACE_INFO("Drive Piling :%s-%s-%d \r\n", __FILE__, __func__, __LINE__);
-	return EXIT_SUCCESS;
-#else
 
-	return EXIT_SUCCESS;
-#endif
-
-
-
-
-
-}
 
 
 
@@ -311,8 +276,8 @@ CTOR(Drive_Gpmc)
 
 FUNCTION_SETTING(init, gpmc_init);
 FUNCTION_SETTING(destory, gpmc_destory);
-FUNCTION_SETTING(assertCs, gpmc_assertCs);
-FUNCTION_SETTING(deassertCs, gpmc_deassertCs);
+
+
 FUNCTION_SETTING(write_u8, gpmc_write_u8);
 FUNCTION_SETTING(read_u8, gpmc_read_u8);
 END_CTOR

@@ -60,11 +60,16 @@ struct pbuf {
    */
   u16_t ref;
 };
+void
+pbuf_init(void);
 
 struct pbuf *
 pbuf_alloc(pbuf_layer layer, u16_t length, pbuf_type type);
 u8_t
 pbuf_free(struct pbuf *p);
+
+u8_t
+pbuf_header(struct pbuf *p, s16_t header_size_increment);
 
 err_t
 pbuf_take(struct pbuf *buf, const void *dataptr, u16_t len);

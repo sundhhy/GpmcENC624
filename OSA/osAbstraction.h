@@ -32,6 +32,6 @@
 
 
 err_t osSetEvent( void *event);
-int osSetEventFromIsr( void *event);
+int osSetEventFromIsr(void *net_instance, int event);
 
 #endif /* OSABSTRACTION_H_ */

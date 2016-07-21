@@ -28,7 +28,12 @@ typedef int err_t;
 #define ERR_WOULDBLOCK -7    /* Operation would block.   */
 #define ERR_USE        -8    /* Address in use.          */
 #define ERR_ISCONN     -9    /* Already connected.       */
-
+#define ERR_UNKOWN     -10    /* 未知错误      */
+#define ERR_BAD_PARAMETER     -11    /* 错误参数      */
+#define ERR_ERROR_INDEX     -13    /* 错误索引      */
+#define ERR_UNINITIALIZED     -14    /* 未初始化的变量或子系统      */
+#define ERR_CATASTROPHIC_ERR	-15 /* 灾难性错误			*/
+#define ERR_UNAVAILABLE			-16	  /* 不可获取的资源			*/
 #define ERR_IS_FATAL(e) ((e) < ERR_ISCONN)
 
 #define ERR_ABRT       -10   /* Connection aborted.      */

@@ -507,7 +507,7 @@ typedef struct NIC_drive
 	char	rese;
 }NicDriver;
 //ENC624J600 driver
-extern const NicDriver enc624j600Driver;
+NicDriver enc624j600Driver;
 
 //ENC624J600 related functions
 err_t enc624j600Init(NetInterface *interface);

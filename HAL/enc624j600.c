@@ -50,7 +50,7 @@ int I_type = 0;		//接口类型
  * @brief ENC624J600 driver
  **/
 
-const NicDriver enc624j600Driver =
+NicDriver enc624j600Driver =
 {
    NIC_TYPE_ETHERNET,
    ETH_MTU,
@@ -347,7 +347,7 @@ bool enc624j600IrqHandler(void *arg)
       //Disable LINKIE interrupt
       ClearBit[ I_type](interface, ENC624J600_REG_EIE, EIE_LINKIE);
       //Notify the user that the link state has changed
-      flag |= osSetEventFromIsr(&interface->nicRxEvent);
+      flag |= osSetEventFromIsr(arg, ISR_LINK_STATUS_CHG);
    }
    //Packet received?
    if(status & EIR_PKTIF)
@@ -355,13 +355,13 @@ bool enc624j600IrqHandler(void *arg)
       //Disable PKTIE interrupt
       ClearBit[ I_type](interface, ENC624J600_REG_EIE, EIE_PKTIE);
       //Notify the user that a packet has been received
-      flag |= osSetEventFromIsr(&interface->nicRxEvent);
+      flag |= osSetEventFromIsr(arg, ISR_RECV_PACKET);
    }
    //Packet transmission complete?
    if(status & (EIR_TXIF | EIR_TXABTIF))
    {
       //Notify the user that the transmitter is ready to send
-      flag |= osSetEventFromIsr(&interface->nicTxEvent);
+      flag |= osSetEventFromIsr(arg, ISR_TRAN_COMPLETE);
       //Clear interrupt flag
       ClearBit[ I_type](interface, ENC624J600_REG_EIR, EIR_TXIF | EIR_TXABTIF);
    }
@@ -493,7 +493,7 @@ err_t enc624j600SetMacFilter(NetInterface *interface)
    for(i = 0; i < interface->macFilterSize; i++)
    {
       //Compute CRC over the current MAC address
-      crc = enc624j600CalcCrc(&interface->macFilter[i].addr, sizeof(MacAddr));
+      crc = enc624j600CalcCrc(&interface->macFilter[i].w, sizeof(MacAddr_u16));
       //Calculate the corresponding index in the table
       k = (crc >> 23) & 0x3F;
       //Update hash table contents
@@ -547,7 +547,7 @@ err_t enc624j600SendPacket(NetInterface *interface,
    if(!interface->linkState)
    {
       //The transmitter can accept another packet
-      osSetEventFromIsr(&interface->nicTxEvent);
+      osSetEventFromIsr(interface, ISR_TRAN_COMPLETE);
       //Drop current packet
       return NO_ERROR;
    }

@@ -82,7 +82,11 @@ pthread_mutex_t Mem_Pbuf_mutex = PTHREAD_MUTEX_INITIALIZER;
 #define PBUF_POOL_IS_EMPTY()
 
 
-
+void
+pbuf_init(void)
+{
+	memp_init();
+}
 
 /**
  * Allocates a pbuf of the given type (possibly a chain for PBUF_POOL type).
