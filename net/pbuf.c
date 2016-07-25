@@ -66,7 +66,6 @@
 #include "memp.h"
 #include "pbuf.h"
 #include "debug.h"
-#include "inet_chksum.h"
 #include "error_head.h"
 #include "osAbstraction.h"
 #include <string.h>

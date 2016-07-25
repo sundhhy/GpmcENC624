@@ -12,6 +12,7 @@
 #include "mem.h"
 
 #define  CONNECT_INFO_NUM		10
+#define NET_INSTANCE_NUM		2
 
 #ifndef LITTLE_ENDIAN
 #define LITTLE_ENDIAN 1234

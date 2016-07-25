@@ -30,6 +30,7 @@
 #define		ISR_LINK_STATUS_CHG ( 1 << 2)
 #define		ISR_RECV_PACKET ( 1 << 3)
 #define		ISR_TRAN_COMPLETE ( 1 << 4)
+#define		ISR_PROCESSING ( 1 << 5)			//
 
 #define		ISR_ERROR ( 1 << 31)
 
@@ -75,9 +76,11 @@ typedef struct
 	int						nicTxEvent;
 
 	pthread_t				tid;
+	pthread_t				send_tid;
 	volatile uint32_t		isr_status;
-	void					*rxpbuf;
 	void					*hl_netif;		//上一层的网络接口
+	void					*rxpbuf;
+
 
 }NetInterface;
 

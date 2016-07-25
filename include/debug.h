@@ -50,8 +50,10 @@
 
 typedef struct {
 	uint32_t		irq_count[2];
+	uint32_t		irq_handle_count[2];
 	uint32_t		event_count[2];
-	uint32_t		event_handle_count;
+	uint32_t		EventHandler[2];
+	uint32_t		irq_set_count;
 }Sys_deginfo;
 
 

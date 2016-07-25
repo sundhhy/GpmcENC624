@@ -559,7 +559,7 @@ void enc624_PSP_ClearBit(NetInterface *interface, uint8_t address, uint16_t mask
 uint32_t enc624j600CalcCrc(const void *data, size_t length);
 
 void enc624j600DumpReg(NetInterface *interface);
-void enc624j600_print_reg(NetInterface *interface, uint16_t addr);
+uint16_t enc624j600_print_reg(NetInterface *interface, uint16_t addr);
 void enc624j600DumpPhyReg(NetInterface *interface);
 
 #endif

@@ -60,7 +60,7 @@ gpmc_chip_cfg Gpmc_cfg_c3 ={
 gpio_cfg Enc624_extern_intr0 ={
 		3,
 		20,
-		FALLINGDETECT,
+		FALLINGDETECT | LOW_LEVELDETECT,
 		1,
 		10,
 		0,
@@ -70,7 +70,7 @@ gpio_cfg Enc624_extern_intr0 ={
 gpio_cfg Enc624_extern_intr1 ={
 		0,
 		7,
-		FALLINGDETECT,
+		FALLINGDETECT | LOW_LEVELDETECT,
 		1,
 		10,
 		1,

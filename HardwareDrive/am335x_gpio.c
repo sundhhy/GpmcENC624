@@ -10,7 +10,7 @@
 #include <sys/mman.h>
 #include <hw/inout.h>
 #include <assert.h>
-#include <sys/neutrino.h>
+
 #include "hw_cm_wkup.h"
 #include "hw_cm_per.h"
 #include "pin_mux.h"
@@ -26,7 +26,6 @@ void GPIO4ModuleClkConfig(void);
 void GPIOModuleEnable(uintptr_t baseAdd);
 void GPIOModuleDisable(uintptr_t baseAdd);
 static void dump_gpio_reg( uintptr_t baseAdd);
-static struct sigevent	Gpio_event;
 
 
 static void (*gpioModuleConfig[4])(void) =
@@ -86,7 +85,7 @@ static err_t gpio_init(Drive_Gpio *t)
 	//配置中断监测类型
 	for( i = 0; i < 4; i ++)
 	{
-		if( i == config->intr_type)
+		if( ( ( 1 << i) & config->intr_type) )
 		{
 			//使能该类型
 			tmp_reg = in32( cthis->gpio_vbase + GPIO_DETECT(i));
@@ -109,7 +108,7 @@ static err_t gpio_init(Drive_Gpio *t)
 #ifdef DEBUG_GPIO
 	dump_gpio_reg( cthis->gpio_vbase);
 #endif
-	SIGEV_INTR_INIT( &Gpio_event );
+	SIGEV_INTR_INIT( &cthis->isr_event );
 	cthis->irq_id = InterruptAttach_r ( GpioIntNum[ config->intr_line][ config->pin_group], gpioExtInteIsr, cthis, 1, _NTO_INTR_FLAGS_END );
 	return EXIT_SUCCESS;
 
@@ -166,7 +165,7 @@ const struct sigevent *gpioExtInteIsr (void *area, int id)
 	Drive_Gpio 		*cthis = ( Drive_Gpio *)area ;
 	uint32_t stats;
 	stats = in32( cthis->gpio_vbase + GPIO_GPIO_IRQSTATUS( cthis->config->intr_line));
-	Dubug_info.irq_count[ cthis->config->instance] ++;
+
 	if( stats & ( 1<< cthis->config->pin_number))
 	{
 		out32( cthis->gpio_vbase + GPIO_GPIO_IRQSTATUS( cthis->config->intr_line), 1 << cthis->config->pin_number);
@@ -174,7 +173,8 @@ const struct sigevent *gpioExtInteIsr (void *area, int id)
 #ifndef DEBUG_ONLY_GPIO_INIT
 	cthis->irq_handle( cthis->irq_handle_arg);
 #endif
-    return ( &Gpio_event);
+	Dubug_info.irq_count[ cthis->config->instance] ++;
+    return ( &cthis->isr_event);
 }
 
 

@@ -57,7 +57,7 @@ int osSetEventFromIsr(void *net_instance, int event)
 	return EXIT_SUCCESS;
 #else
 	NetInterface	*i_net = (NetInterface	*)net_instance;
-	Dubug_info.event_handle_count ++;
+	Dubug_info.irq_set_count ++;
 
 	atomic_set( &i_net->isr_status, event);
 

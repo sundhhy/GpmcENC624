@@ -18,12 +18,11 @@
 
 
 const  uint8_t enc624_mac[2][6] = { { 0x01,0x01,0x01,0x01,0x01,0x01}, { 0x02,0x02,0x02,0x02,0x02,0x02}};
-
 static void MyHandler( int sig_number );
 static void show_debug_info( Sys_deginfo *info);
 static int set_nonblock_flag( int desc, int value);
 static void netif_link_chg(struct netif *netif);
-
+static char Link_up[2] = {0};
 int Net_connect_handle[2] = {-1};
 err_t input_fn(struct pbuf *p, struct netif *inp);
 
@@ -44,9 +43,7 @@ int main(int argc, char *argv[])
 	uint32_t *p_u32;
 	char opt;
 	uint8_t 	instance;
-
-
-
+	err_t ret = 0;
 	struct pbuf *p_txbuf;
 	if(ThreadCtl(_NTO_TCTL_IO, 0) != EOK)
 	{
@@ -84,19 +81,21 @@ int main(int argc, char *argv[])
 
 			break;
 		}
+//		show_debug_info(&Dubug_info);
 		count ++;
 		if( count %40 == 0)
+		{
 			printf(" run %04x ... \n", count );
+		}
 		delay(100);
+		if( Link_up[0] == 0)
+			continue;
 
 		if( Net_connect_handle[0] < 0)
 		{
-			Net_connect_handle[ 0] = netif_connect( NetIf[0], (u8_t *)&ethbroadcast);
+			Net_connect_handle[0] = netif_connect( NetIf[0], (u8_t *)&ethbroadcast);
 			continue;
 		}
-
-
-
 		if( count %40 == 0)
 		{
 			p_txbuf = pbuf_alloc( PBUF_LINK, 1200, PBUF_POOL);
@@ -106,8 +105,8 @@ int main(int argc, char *argv[])
 				p_u32 = ( uint32_t *)p_txbuf->payload;
 				*p_u32 = count;
 				p_txbuf->len = 4;
-				NetIf[0]->upperlayer_output( NetIf[0], p_txbuf, Net_connect_handle[0]);
-				pbuf_free( p_txbuf);
+				if( NetIf[0]->upperlayer_output( NetIf[0], p_txbuf, Net_connect_handle[0]) != ERR_OK)
+					pbuf_free( p_txbuf);
 			}
 
 		}
@@ -146,13 +145,14 @@ err_t input_fn(struct pbuf *p, struct netif *inp)
 		TRACE_INFO("0x%02x ", data[i]);
 	}
 	TRACE_INFO("\r\n");
-//	pbuf_free( p);
 	return 0;
 }
 
 static void netif_link_chg(struct netif *netif)
 {
 	NetInterface *inet = ( NetInterface *)netif->ll_netif;
+
+	Link_up[ inet->instance] = inet->linkState;
 
 //	if( inet->linkState)
 //	{
@@ -184,6 +184,8 @@ static int set_nonblock_flag( int desc, int value)
 static void show_debug_info( Sys_deginfo *info)
 {
 	static Sys_deginfo	old_ifo;
+	static int count = 0;
+	int i = 0;
 
 	if( Dubug_info.irq_count[0] != old_ifo.irq_count[0] || Dubug_info.irq_count[1] != old_ifo.irq_count[1] )
 	{
@@ -193,20 +195,53 @@ static void show_debug_info( Sys_deginfo *info)
 		printf( "%d,%d \n", Dubug_info.irq_count[0], Dubug_info.irq_count[1]);
 	}
 
-	if( Dubug_info.event_count[0] != old_ifo.event_count[0] || Dubug_info.event_count[1] != old_ifo.event_count[1] )
+//	if( Dubug_info.event_count[0] != old_ifo.event_count[0] || Dubug_info.event_count[1] != old_ifo.event_count[1] )
+//	{
+//		old_ifo.event_count[0] = Dubug_info.event_count[0];
+//		old_ifo.event_count[1] = Dubug_info.event_count[1];
+//		printf("event count :");
+//		printf( "RX_EVENT %d, TX_EVENT %d \n", Dubug_info.event_count[0], Dubug_info.event_count[1]);
+//	}
+
+	if( Dubug_info.irq_handle_count[0] != old_ifo.irq_handle_count[0]\
+			|| Dubug_info.irq_handle_count[1] != old_ifo.irq_handle_count[1] )
 	{
-		old_ifo.event_count[0] = Dubug_info.event_count[0];
-		old_ifo.event_count[1] = Dubug_info.event_count[1];
-		printf("event count :");
-		printf( "RX_EVENT %d, TX_EVENT %d \n", Dubug_info.event_count[0], Dubug_info.event_count[1]);
+		old_ifo.irq_handle_count[0] = Dubug_info.irq_handle_count[0];
+		old_ifo.irq_handle_count[1] = Dubug_info.irq_handle_count[1];
+		printf("irq_handle_count count :");
+		printf( "irq_handle_count %d %d \n", Dubug_info.irq_handle_count[0], Dubug_info.irq_handle_count[1]);
 	}
 
-	if( Dubug_info.event_handle_count != old_ifo.event_handle_count)
+//	if( Dubug_info.EventHandler[0] != old_ifo.EventHandler[0] \
+			|| Dubug_info.EventHandler[1] != old_ifo.EventHandler[1] )
+//	{
+//		old_ifo.EventHandler[0] = Dubug_info.EventHandler[0];
+//		old_ifo.EventHandler[1] = Dubug_info.EventHandler[1];
+//		printf("EventHandler count :");
+//		printf( "EventHandler %d %d \n", Dubug_info.EventHandler[0], Dubug_info.EventHandler[1]);
+//	}
+
+
+	if( Dubug_info.irq_set_count != old_ifo.irq_set_count)
 	{
-		old_ifo.event_handle_count = Dubug_info.event_handle_count;
-		printf( "event_handle_count %d\n", Dubug_info.event_handle_count);
+		old_ifo.irq_set_count = Dubug_info.irq_set_count;
+		printf( "irq_set_count %d\n", Dubug_info.irq_set_count);
 
 	}
+
+//	count ++;
+//	if( count %20 == 0)
+//	{
+//		for( i = 0 ; i < 2; i++)
+//		{
+//			if( Inet[i] != NULL)
+//			{
+//				enc624j600_print_reg( Inet[i], ENC624J600_REG_EIR);
+////				enc624j600_print_reg( Inet[i], ENC624J600_REG_ETXSTAT);
+//			}
+//		}
+//	}
+
 
 }
 

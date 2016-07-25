@@ -164,14 +164,18 @@ struct netif {
   /* µÍ²ã ÍøÂç½Ó¿Ú			*/
   void *ll_netif;
 
-  sem_t Transmit_Done_sem;
-
-
+//  sem_t Transmit_Done_sem;
+//
+//  pthread_mutex_t	mutex_send;
   /* the hostname for this netif, NULL is a valid value */
   char*  hostname;
 
   /** maximum transfer unit (in bytes) */
   u16_t mtu;
+  /** number of this interface */
+  u16_t num;
+
+
   /** number of bytes used in hwaddr */
   u8_t hwaddr_len;
   /** link level hardware address of this interface */
@@ -179,9 +183,8 @@ struct netif {
   /** flags (see NETIF_FLAG_ above) */
   u8_t flags;
   /** descriptive abbreviation */
-  char name[2];
-  /** number of this interface */
-  u8_t num;
+  char *name;
+
 };
 
 typedef struct {

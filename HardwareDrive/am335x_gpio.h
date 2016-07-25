@@ -15,11 +15,12 @@
 #include "interface.h"
 #include "hardware_cfg.h"
 #include "am335x.h"
+#include <sys/neutrino.h>
 
-#define		LOW_LEVELDETECT 	0
-#define		HIG_LEVELDETECT 	1
-#define		RISINGDETECT 		2
-#define		FALLINGDETECT 		3
+#define		LOW_LEVELDETECT 	( 1 << 0)
+#define		HIG_LEVELDETECT 	( 1 << 1)
+#define		RISINGDETECT 		( 1 << 2)
+#define		FALLINGDETECT 		( 1 << 3)
 
 #define 	GPIO_DETECT(n)   ( GPIO_LEVELDETECT0 + (n * 4))
 #define 	GPIO_IRQSTATUS_SET(n)   (GPIO_IRQSTATUS_SET_0 + (n * 4))
@@ -41,6 +42,7 @@ CLASS(Drive_Gpio)
 	int					irq_id;
 	uintptr_t			gpio_vbase;
 	gpio_cfg			*config;
+	struct sigevent		isr_event;
 
 };
 

@@ -91,19 +91,20 @@ etharp_arp_input(struct netif *netif, struct eth_addr *ethaddr, struct pbuf *p)
 	if( hdr->proto == PP_HTONS(ETHTYPE_CHITIC))
 	{
 		chitic_hdr = (struct chitic_etharp_hdr *)((u8_t*)ethhdr + SIZEOF_ETH_HDR);
-		printf( "chitic_hdr->opcode:%x \n", htons( chitic_hdr->opcode));
 		switch (chitic_hdr->opcode)
 		{
 			case PP_HTONS(ARP_REQUEST):
-				if( ( macCompAddr( &chitic_hdr->dhwaddr, (void *)netif->hwaddr) == 0) || \
+				if( ( macCompAddr( &chitic_hdr->dhwaddr, netif->hwaddr) == 0) || \
 					( macCompAddr( &chitic_hdr->dhwaddr, &ethbroadcast) == 0))
 				{
+					struct pbuf *reply_pbuf = pbuf_alloc( PBUF_RAW, p->len, PBUF_POOL);
 					ETHADDR16_COPY(&chitic_hdr->dhwaddr, &chitic_hdr->shwaddr);
 					ETHADDR16_COPY(&chitic_hdr->shwaddr, netif->hwaddr);
 					chitic_hdr->opcode = htons(ARP_REPLY);
+
+					memcpy( reply_pbuf->payload, p->payload, p->len);
 					/* return ARP reply */
-					//TODO	这里会产生致命问题
-					netif->linkoutput(netif, p);
+					netif->linkoutput(netif, reply_pbuf);
 				}
 				break;
 			case PP_HTONS(ARP_REPLY):
@@ -115,8 +116,8 @@ etharp_arp_input(struct netif *netif, struct eth_addr *ethaddr, struct pbuf *p)
 						if( Eth_Cnnect_info[i].status == CON_STATUS_PENDING)
 						{
 //							if( macCompAddr( Eth_Cnnect_info[i].target_hwaddr, &chitic_hdr->shwaddr) == 0)
-							if( ( macCompAddr( Eth_Cnnect_info[i].target_hwaddr, &chitic_hdr->shwaddr) == 0) || \
-								( macCompAddr( Eth_Cnnect_info[i].target_hwaddr, &ethbroadcast)== 0) )
+							if( ( macCompAddr( (void *)Eth_Cnnect_info[i].target_hwaddr, &chitic_hdr->shwaddr) == 0) || \
+								( macCompAddr( (void *)Eth_Cnnect_info[i].target_hwaddr, &ethbroadcast)== 0) )
 							{
 								ETHADDR16_COPY( Eth_Cnnect_info[i].target_hwaddr, &chitic_hdr->shwaddr);
 								Eth_Cnnect_info[i].status = CON_STATUS_ESTABLISH;
@@ -186,13 +187,14 @@ err_t ethernet_input(struct pbuf *p, struct netif *netif)
 	  }
 
 
-
-	 printf("ethernet_input: dest:%02x:%02x:%02x:%02x:%02x:%02x, src:%02x:%02x:%02x:%02x:%02x:%02x, type:%x\n",
-	     (unsigned)ethhdr->dest.addr[0], (unsigned)ethhdr->dest.addr[1], (unsigned)ethhdr->dest.addr[2],
-	     (unsigned)ethhdr->dest.addr[3], (unsigned)ethhdr->dest.addr[4], (unsigned)ethhdr->dest.addr[5],
-	     (unsigned)ethhdr->src.addr[0], (unsigned)ethhdr->src.addr[1], (unsigned)ethhdr->src.addr[2],
-	     (unsigned)ethhdr->src.addr[3], (unsigned)ethhdr->src.addr[4], (unsigned)ethhdr->src.addr[5],
-	     (unsigned)htons(ethhdr->type));
+//
+//	 printf("%s input: dest:%02x:%02x:%02x:%02x:%02x:%02x, src:%02x:%02x:%02x:%02x:%02x:%02x, type:%x\n",
+//			 netif->name,
+//	     (unsigned)ethhdr->dest.addr[0], (unsigned)ethhdr->dest.addr[1], (unsigned)ethhdr->dest.addr[2],
+//	     (unsigned)ethhdr->dest.addr[3], (unsigned)ethhdr->dest.addr[4], (unsigned)ethhdr->dest.addr[5],
+//	     (unsigned)ethhdr->src.addr[0], (unsigned)ethhdr->src.addr[1], (unsigned)ethhdr->src.addr[2],
+//	     (unsigned)ethhdr->src.addr[3], (unsigned)ethhdr->src.addr[4], (unsigned)ethhdr->src.addr[5],
+//	     (unsigned)htons(ethhdr->type));
 
 	  type = ethhdr->type;
 

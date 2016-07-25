@@ -63,6 +63,7 @@ err_t nicProcessPacket( NetInterface * Inet, uint8_t *frame, int len)
 	TRACE_INFO("\r\n");
 	return EXIT_SUCCESS;
 #else
+
 	struct pbuf *p_buf = ( struct pbuf *) ( Inet->rxpbuf);
 	struct netif *pnet = ( struct netif *) ( Inet->hl_netif);
 	p_buf->len = len;
@@ -75,7 +76,8 @@ err_t nicProcessPacket( NetInterface * Inet, uint8_t *frame, int len)
 //		case
 //	}
 
-
+//	if( Inet->input)
+//		return Inet->input( p, netif);
 
 	return EXIT_SUCCESS;
 #endif
