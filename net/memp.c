@@ -71,7 +71,7 @@ static const char *memp_desc[MEMP_MAX] = {
 };
 #endif
 
-static uint8_t memp_memory[MEM_ALIGNMENT - 1
+static uint8_t memp_memory[ MEM_ALIGNMENT - 1
 #define LWIP_MEMPOOL(name,num,size,desc) +( (num) * (MEMP_SIZE + MEMP_ALIGN_SIZE(size) ) )
 #include "memp_std.h"
 ];
@@ -104,6 +104,7 @@ memp_init(void)
   for (i = 0; i < MEMP_MAX; ++i) {
     memp_tab[i] = NULL;
     /* create a linked list of memp elements */
+//    printf("  mempool area [%p -", memp);
     for (j = 0; j < memp_num[i]; ++j) {
       memp->next = memp_tab[i];
       memp_tab[i] = memp;
@@ -113,7 +114,10 @@ memp_init(void)
 #endif
       );
     }
+    printf(" %p] \n", memp_tab[i]);
   }
+
+
 #if MEMP_OVERFLOW_CHECK
   memp_overflow_init();
   /* check everything a first time to see if it worked */
@@ -135,12 +139,12 @@ memp_init(void)
 void *memp_malloc(memp_t type)
 {
   struct memp *memp;
-//  todo 增加临界保护机制
   SYS_ARCH_DECL_PROTECT(Mem_Pool_mutex);
 
   assert( type < MEMP_MAX);
 
   SYS_ARCH_PROTECT(Mem_Pool_mutex);
+//  printf("pthread_mutex_lock  Mem_Pool_mutex at : %s %d \n", __func__, __LINE__);
 
   memp = memp_tab[type];
 
@@ -154,9 +158,11 @@ void *memp_malloc(memp_t type)
 
     assert( ((mem_ptr_t)memp % MEM_ALIGNMENT) == 0);
     memp = (struct memp*)(void *)((uint8_t*)memp + MEMP_SIZE);
+
   }
 
   SYS_ARCH_UNPROTECT(Mem_Pool_mutex);
+//  printf("pthread_mutex_unlock  Mem_Pool_mutex at : %s %d \n", __func__, __LINE__);
 
   return memp;
 }
@@ -183,6 +189,8 @@ memp_free(memp_t type, void *mem)
   memp = (struct memp *)(void *)((u8_t*)mem - MEMP_SIZE);
 
   SYS_ARCH_PROTECT(Mem_Pool_mutex);
+//  printf("pthread_mutex_lock  Mem_Pool_mutex at : %s %d \n", __func__, __LINE__);
+
 #if MEMP_OVERFLOW_CHECK
 #if MEMP_OVERFLOW_CHECK >= 2
   memp_overflow_check_all();
@@ -199,4 +207,6 @@ memp_free(memp_t type, void *mem)
 
 
   SYS_ARCH_UNPROTECT(Mem_Pool_mutex);
+//  printf("pthread_mutex_unlock  Mem_Pool_mutex at : %s %d \n", __func__, __LINE__);
+
 }

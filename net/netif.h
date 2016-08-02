@@ -60,6 +60,8 @@ struct netif;
 #define ETHARP_HWADDR_LEN     6
 #endif
 
+#define	SEND_DATA	(0x33cc55aa)
+
 /* Throughout this file, IP addresses are expected to be in
  * the same byte order as in IP_PCB. */
 
@@ -159,10 +161,11 @@ struct netif {
 
   /** This field can be set by the device driver and could point
    *  to state information for the device. */
-  void *state;
+  uint32_t state;
 
   /* 低层 网络接口			*/
   void *ll_netif;
+  void	*reply_pbuf;			//应答用的pbuf
 
 //  sem_t Transmit_Done_sem;
 //
@@ -202,6 +205,7 @@ void netif_init(struct netif * netif);
 
 
 void netif_remove(struct netif * netif);
+void netif_restart(struct netif * netif);
 
 int netif_connect( struct netif * netif, u8_t* hwaddr);
 int netif_disconnect( struct netif * netif, int handle);

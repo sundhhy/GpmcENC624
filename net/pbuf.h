@@ -10,7 +10,7 @@
 
 #include "net_config.h"
 #include "osAbstraction.h"
-
+#include "def.h"
 typedef enum {
 //  PBUF_TRANSPORT,
 //  PBUF_IP,
@@ -58,7 +58,7 @@ struct pbuf {
    * that refer to this pbuf. This can be pointers from an application,
    * the stack itself, or pbuf->next pointers from a chain.
    */
-  u16_t ref;
+   u16_t ref;
 };
 void
 pbuf_init(void);

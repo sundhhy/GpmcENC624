@@ -17,24 +17,26 @@
 #define GPMC_WR32_REG(cthis, reg, val) out32(  cthis->gpmc_vbase + cthis->cs_regoffset + reg, val)
 static char Vbase_reference = 0;
 static SINGLETON Vbase = MAP_DEVICE_FAILED;
+
+//时序通过crc验证来调整得到的一个比较优的。
 gpmc_wr_timing WR_timimg = {
-	60,			//cswr_offtime_ns
-	60,			//wr_offtime_ns
-	20,				//wr_ontime_ns
-	100,				//wr_cycletime_ns
-	70,				//wr_accesstime_ns
+	50,			//cswr_offtime_ns
+	50,			//wr_offtime_ns
+	10,				//wr_ontime_ns
+	50,				//wr_cycletime_ns
+	30,				//wr_accesstime_ns
 };
 gpmc_rd_timing RD_timimg = {
 	90,			//csrd_offtime_ns
 	80,			//rd_offtime_ns
-	20,				//rd_ontime_ns
-	100	,			//rd_cycletime_ns
+	10,				//rd_ontime_ns
+	90	,			//rd_cycletime_ns
 	80,			//rd_accesstime_ns
 };
 
 gpmc_common_timing	COM_timing = {
 //	false,				//cs_extra_dealy
-	10,					//cs_ontime_ns
+	0,					//cs_ontime_ns
 	0,					//burst_accesstime_ns 按ENC624的写SRAM的间隔时间配置
 };
 
@@ -113,15 +115,33 @@ static err_t gpmc_init(Drive_Gpmc *t, void *arg)
 
 	cthis->p_enc624 = ( volatile uint8_t *)pAddr;
 
-//	printf("GPMC_CONFIG1 :0x%x\n",GPMC_RD32_REG( cthis, OMAP2420_GPMC_CONFIG1));
-//	printf("GPMC_CONFIG2 :0x%x\n",GPMC_RD32_REG( cthis, OMAP2420_GPMC_CONFIG2));
-//	printf("GPMC_CONFIG3 :0x%x\n",GPMC_RD32_REG( cthis, OMAP2420_GPMC_CONFIG3));
-//	printf("GPMC_CONFIG4 :0x%x\n",GPMC_RD32_REG( cthis, OMAP2420_GPMC_CONFIG4));
-//	printf("GPMC_CONFIG5 :0x%x\n",GPMC_RD32_REG( cthis, OMAP2420_GPMC_CONFIG5));
-//	printf("GPMC_CONFIG6 :0x%x\n",GPMC_RD32_REG( cthis, OMAP2420_GPMC_CONFIG6));
-//	printf("GPMC_CONFIG7 :0x%x\n",GPMC_RD32_REG( cthis, OMAP2420_GPMC_CONFIG7));
+//	printf("GPMC_CONFIG1 :0x%04x\n",GPMC_RD32_REG( cthis, OMAP2420_GPMC_CONFIG1));
+//	printf("GPMC_CONFIG2 :0x%04x\n",GPMC_RD32_REG( cthis, OMAP2420_GPMC_CONFIG2));
+//	printf("GPMC_CONFIG3 :0x%04x\n",GPMC_RD32_REG( cthis, OMAP2420_GPMC_CONFIG3));
+//	printf("GPMC_CONFIG4 :0x%04x\n",GPMC_RD32_REG( cthis, OMAP2420_GPMC_CONFIG4));
+//	printf("GPMC_CONFIG5 :0x%04x\n",GPMC_RD32_REG( cthis, OMAP2420_GPMC_CONFIG5));
+//	printf("GPMC_CONFIG6 :0x%04x\n",GPMC_RD32_REG( cthis, OMAP2420_GPMC_CONFIG6));
+//	printf("GPMC_CONFIG7 :0x%04x\n",GPMC_RD32_REG( cthis, OMAP2420_GPMC_CONFIG7));
 
 
+/*
+GPMC_CONFIG1 :0x0000
+GPMC_CONFIG2 :0x60901
+GPMC_CONFIG3 :0x0000
+GPMC_CONFIG4 :0x6026812
+GPMC_CONFIG5 :0x1080a0a
+GPMC_CONFIG6 :0x87070000
+GPMC_CONFIG7 :0x0f59
+
+GPMC_CONFIG1 :0x0000
+GPMC_CONFIG2 :0x60901
+GPMC_CONFIG3 :0x0000
+GPMC_CONFIG4 :0x6026812
+GPMC_CONFIG5 :0x1080a0a
+GPMC_CONFIG6 :0x87070000
+GPMC_CONFIG7 :0x0f5a
+
+*/
 
 
 	return EXIT_SUCCESS;

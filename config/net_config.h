@@ -99,7 +99,7 @@ typedef u32_t           mem_ptr_t;
  * PBUF_POOL_SIZE: the number of buffers in the pbuf pool.
  */
 #ifndef PBUF_POOL_SIZE
-#define PBUF_POOL_SIZE                  16
+#define PBUF_POOL_SIZE                  256
 #endif
 
 

@@ -23,11 +23,11 @@ static uint16_t Attempts = 0;		//尝试次数
 
 //发送队列成员
 static struct pbuf *Tx_pbuf[NET_INSTANCE_NUM] = {NULL};
-static sem_t Sem_tx_pbufnum[NET_INSTANCE_NUM] ;
+static pthread_cond_t Send_pbuf_cond[NET_INSTANCE_NUM] = { PTHREAD_COND_INITIALIZER, PTHREAD_COND_INITIALIZER};
 static pthread_mutex_t TxPbuf_mutex[NET_INSTANCE_NUM] = {  PTHREAD_MUTEX_INITIALIZER,\
 															 PTHREAD_MUTEX_INITIALIZER,	};
 //static pthread_mutex_t Send_mutex[NET_INSTANCE_NUM] = {  PTHREAD_MUTEX_INITIALIZER,\
-//															 PTHREAD_MUTEX_INITIALIZER,	};
+															 PTHREAD_MUTEX_INITIALIZER,	};
 extern MacAddr_u16	MAC_UNSPECIFIED_ADDR;
 connect_info	Eth_Cnnect_info[CONNECT_INFO_NUM];
 
@@ -54,17 +54,17 @@ void netif_init(struct netif * netif)
 	}
 	create_low_level_netif( netif);
 
+	netif->reply_pbuf = pbuf_alloc( PBUF_RAW,netif->mtu, PBUF_POOL);
 	inet = (NetInterface *)netif->ll_netif;
 	netif->linkoutput = netif_linkoutput;
 	netif->upperlayer_output = chitic_layer_output;
 	netif->flags |= NETIF_FLAG_ETHARP;
-//	sem_init( &netif->Transmit_Done_sem, 0, 0);
-	sem_init( &Sem_tx_pbufnum[ netif->num], 0, 0);
+//	sem_init( &netif->Transmit_Done_sem, 0, 1);
 
 //	pthread_mutex_init( &netif->mutex_send, NULL);
 //	pthread_mutex_lock( &netif->mutex_send);
 
-	ret = pthread_create ( &inet->tid, NULL, isr_handle_thread, netif);
+	ret = pthread_create ( &inet->isr_tid, NULL, isr_handle_thread, netif);
 	CHECK_ERROR( ret, " pthread_create()");
 	ret = pthread_create ( &inet->send_tid, NULL, send_pack_thread, netif);
 	CHECK_ERROR( ret, " pthread_create()");
@@ -74,8 +74,15 @@ void netif_remove(struct netif * netif)
 {
 	NetInterface *inet = (NetInterface *)netif->ll_netif;
 	pthread_cancel( inet->send_tid);
-	pthread_cancel( inet->tid);
-	pthread_join( inet->tid, NULL);
+	pthread_join( inet->send_tid, NULL);
+	pthread_cancel( inet->isr_tid);
+	pthread_join( inet->isr_tid, NULL);
+}
+
+void netif_restart(struct netif * netif)
+{
+	NetInterface *inet = ( NetInterface *)netif->ll_netif;
+	enc624j600Driver.restart( inet);
 }
 
 //返回值 -1 失败，其他则是连接信息的索引
@@ -86,6 +93,7 @@ int netif_connect( struct netif * netif, u8_t* hwaddr)
 	static uint8_t i = 0;
 
 	struct pbuf *p;
+//	printf("%s %s %d \n", netif->name, __func__, __LINE__);
 	switch( step)
 	{
 		case 0:		//send chitic arp packet
@@ -102,14 +110,20 @@ int netif_connect( struct netif * netif, u8_t* hwaddr)
 				return ERR_UNAVAILABLE;
 			}
 
-
+			p = pbuf_alloc( PBUF_RAW, 64, PBUF_POOL);
+			if( p == NULL)
+			{
+				printf("pbuf alloc fail:%s,%d \n", __func__, __LINE__);
+				return ERR_UNAVAILABLE;
+			}
 			Eth_Cnnect_info[i].status = CON_STATUS_PENDING;
 			ETHADDR16_COPY( Eth_Cnnect_info[i].target_hwaddr, hwaddr);
 
-			p = pbuf_alloc( PBUF_RAW, 64, PBUF_POOL);
+
 			ret = chitic_arp_output( netif, p, (struct eth_addr *)hwaddr);
 			if( ret != ERR_OK)
 			{
+//				printf("invoking pbuf_free at :%s %s %d \n", __FILE__, __func__, __LINE__);
 
 				pbuf_free( p);
 				Eth_Cnnect_info[i].status = CON_STATUS_IDLE;
@@ -122,7 +136,7 @@ int netif_connect( struct netif * netif, u8_t* hwaddr)
 			if( Eth_Cnnect_info[i].status == CON_STATUS_ESTABLISH)
 			{
 				printf(" Connect ");
-				printf("dest:%02x:%02x:%02x:%02x:%02x:%02x successed\n",
+				printf("dest:%02x:%02x:%02x:%02x:%02x:%02x successed \r\n",
 						 (unsigned)Eth_Cnnect_info[i].target_hwaddr[0], (unsigned)Eth_Cnnect_info[i].target_hwaddr[1], (unsigned)Eth_Cnnect_info[i].target_hwaddr[2],
 						 (unsigned)Eth_Cnnect_info[i].target_hwaddr[3], (unsigned)Eth_Cnnect_info[i].target_hwaddr[4], (unsigned)Eth_Cnnect_info[i].target_hwaddr[5]);
 				Attempts = 0;
@@ -138,7 +152,7 @@ int netif_connect( struct netif * netif, u8_t* hwaddr)
 			Attempts = 0;
 			step = 0;
 			Eth_Cnnect_info[i].status = CON_STATUS_IDLE;
-			return ERR_UNAVAILABLE;
+			return ERR_TIMEOUT;
 	}
 
 
@@ -165,6 +179,8 @@ err_t netif_linkoutput(struct netif *netif, struct pbuf *p)
 		return ERR_UNINITIALIZED;
 
 	pthread_mutex_lock( &TxPbuf_mutex[instance] );
+
+//	printf("pthread_mutex_lock  TxPbuf_mutex[%d] at : %s %d \n",instance, __func__, __LINE__);
 //	printf(" %s set tx pbuf \n",inet->name);
 	//这是第一个要加入发送队列的pbuf
 	if( Tx_pbuf[ inet->instance] == NULL)
@@ -177,12 +193,23 @@ err_t netif_linkoutput(struct netif *netif, struct pbuf *p)
 	while ( iterator->next != NULL)
 	{
 		iterator = iterator->next;
+//		if( iterator->ref == 0)
+//				printf(" %s error pbuf %p \n",__func__, iterator );
 	}
 
 	iterator->next = p;
+
 exit_output:
-	sem_post( &Sem_tx_pbufnum[ instance]);
+	pthread_cond_signal( &Send_pbuf_cond[ instance]);
 	pthread_mutex_unlock( &TxPbuf_mutex[instance] );
+
+//	if( p->ref == 0)
+//	{
+//		printf(" %s %d error pbuf %p \n",__func__,__LINE__, p);
+//	}
+
+//	printf("pthread_mutex_unlock  TxPbuf_mutex[%d] at : %s %d \n",instance, __func__, __LINE__);
+
 	return ERR_OK;
 
 }
@@ -191,87 +218,75 @@ static void* send_pack_thread(void *arg)
 	struct netif *p_netif = (struct netif *)arg;
 	NetInterface *inet = ( NetInterface *)p_netif->ll_netif;
 	int instance = inet->instance;
-//	struct timespec tm;
 	NetBuffer		send_buffer;
 	err_t 	ret;
+	int 		delay_us = 0;
 	struct pbuf *pbuf_tmp;
-
-	sem_init( &Sem_tx_pbufnum[ instance], 0, 0);
-	pthread_detach( inet->send_tid);
+//	static uint32_t	last_seq[2] = {0};
+//	uint32_t	*pu32;
 
 	while(1)
 	{
-		sem_wait( &Sem_tx_pbufnum[ instance]);
-
-
 
 		pthread_mutex_lock( &TxPbuf_mutex[instance] );
-		if( Tx_pbuf[ instance] == NULL)
+
+		while( Tx_pbuf[ instance] == NULL)
+			pthread_cond_wait( &Send_pbuf_cond[ instance], &TxPbuf_mutex[instance]);
+		//从头部取出待发的数据,把全部的数据发完，或者enc624发送失败时退出
+		while( Tx_pbuf[ instance] != NULL)
 		{
-			pthread_mutex_unlock( &TxPbuf_mutex[instance] );
-			continue;
-		}
-
-
-		//从头部取出待发的数据,把全部的数据发完
-		while(1)
-		{
-
 			if( !inet->linkState)
 				break;
-
 			if( inet->isr_status & ISR_PROCESSING)
 			{
-				sem_post( &Sem_tx_pbufnum[ instance]);
-				printf("the %s  ISR_PROCESSING... \n", inet->name);
-				delay(1);
-
+//				printf("the %s  ISR_PROCESSING... \n", inet->name);
 				break;
 			}
-
-
-//			ret = pthread_mutex_trylock( &Send_mutex[ inet->instance] ) ;
-//			if( ret != EOK )
-//			{
-//				printf(" %s pthread_mutex_trylock fail %d \n", p_netif->name, ret);
-//				delay(1);
-//				break;
-//			}
-//			printf(" %s lock mutex_send \n",  p_netif->name);
-
-
 			pbuf_tmp = Tx_pbuf[ instance];
-
-			if( pbuf_tmp == NULL)
-				break;
-
-
-
 
 			send_buffer.data = pbuf_tmp->payload;
 			send_buffer.len = pbuf_tmp->len;
-//			delay(1);
 			ret = enc624j600Driver.SendPacket( inet, &send_buffer, 0);
-//				clock_gettime(CLOCK_REALTIME, &tm);
-//				tm.tv_nsec += 30000;		//30ms
-//				ret = sem_timedwait( &p_netif->Transmit_Done_sem, &tm );
-//				if( ret == 0)
-//				{
-//					printf("the %s send ... \n", inet->name);
-//				}
-//				else
-//				{
-//
-//					printf("%s send time out \n",  inet->name);
-//				}
+
 			if( ret == ERR_OK)
 			{
+//				if( send_buffer.len > 64)
+//				{
+//					pu32 = (uint32_t *)( send_buffer.data +18);
+//					*pu32 = PP_NTOHL(*pu32);
+//					if( *pu32 == 7560)
+//					{
+//						printf( "send seq %d \n", *pu32 );
+//					}
+////					if( last_seq[instance] + 1 != *pu32)
+////					{
+////
+////						printf("send err seq %d+1!= %d \n", last_seq[instance], *pu32);
+////
+////					}
+////					last_seq[instance] = *pu32;
+//				}
+
 				Tx_pbuf[ instance] = pbuf_tmp->next;
 				pbuf_free( pbuf_tmp);
 
 			}
+			else
+			{
+				//此次发送失败，保留数据到下一次发送
+//				printf("%s send time out \n",  inet->name);
+				delay_us = 100;
+//				pthread_mutex_lock( &Send_mutex[instance]);
+				break;
+			}
+
 		} //while(1)
 		pthread_mutex_unlock( &TxPbuf_mutex[instance] );
+		if( delay_us)
+		{
+			usleep(delay_us);
+			delay_us = 0;
+		}
 	}			//while(1)
 	return NULL;
 }
@@ -288,8 +303,7 @@ err_t chitic_layer_output(struct netif *netif, struct pbuf *p, int handle)
 	/* make room for Ethernet header - should not fail */
 	if (pbuf_header(p, sizeof(struct eth_hdr)) != 0) {
 		/* bail out */
-		LWIP_DEBUGF(ETHARP_DEBUG | LWIP_DBG_TRACE | LWIP_DBG_LEVEL_SERIOUS,
-		  ("etharp_output: could not allocate room for header.\n"));
+		printf("etharp_output: could not allocate room for header.\n");
 
 		return ERR_BUF;
 	}
@@ -322,7 +336,6 @@ static void* isr_handle_thread(void *arg)
 	struct netif *p_netif = (struct netif *)arg;
 	NetInterface *inet = ( NetInterface *)p_netif->ll_netif;
 	err_t	ret = 0;
-	struct pbuf *p_rxbuf;
 
 
 	ret = enc624j600Driver.Init( inet);
@@ -351,26 +364,20 @@ static void* isr_handle_thread(void *arg)
 
 			atomic_clr( &inet->isr_status, ISR_RECV_PACKET);
 //			TRACE_INFO("%s recv packet \r\n", inet->name);
-			p_rxbuf = pbuf_alloc( PBUF_RAW, ETH_MTU, PBUF_POOL);
-			if( p_rxbuf != NULL)
-			{
-				inet->ethFrame = p_rxbuf->payload;
-				inet->rxpbuf = p_rxbuf;
-
-				enc624j600Driver.EventHandler( inet);
-			}
-			else
-			{
-				TRACE_INFO("pbuf_alloc fail \r\n");
-
-			}
-			pbuf_free(p_rxbuf);
+			inet->rxpbuf = inet->rxpbuf_head;
+			inet->ethFrame = inet->rxpbuf->payload;
+			enc624j600Driver.EventHandler( inet);
+		}
+		if( inet->isr_status & ISR_RECV_ABORT)
+		{
+			atomic_clr( &inet->isr_status, ISR_RECV_ABORT);
+			enc624j600Driver.EventHandler( inet);
 
 		}
 		if(  inet->isr_status & ISR_TRAN_COMPLETE)
 		{
 			atomic_clr( &inet->isr_status, ISR_TRAN_COMPLETE);
-			enc624j600Driver.EventHandler( inet);
+//			enc624j600Driver.EventHandler( inet);
 //			TRACE_INFO("net%d tx complete \r\n", inet->instance);
 //			pthread_mutex_unlock( &Send_mutex[ inet->instance]);
 //			sem_post( &p_netif->Transmit_Done_sem);
@@ -379,18 +386,24 @@ static void* isr_handle_thread(void *arg)
 		if(  inet->isr_status & ISR_LINK_STATUS_CHG)
 		{
 			atomic_clr( &inet->isr_status, ISR_LINK_STATUS_CHG);
+//			printf("%s %s link status  %d \r\n", __func__, inet->name, inet->linkState);
 			enc624j600Driver.EventHandler( inet);
-//			TRACE_INFO("%s link status change  \r\n", inet->name);
+//			printf("%s %s link status  %d \r\n", __func__, inet->name, inet->linkState);
 			if( inet->linkState)
 			{
+				p_netif->state |= NETIF_FLAG_LINK_UP;
 
 //				pthread_mutex_unlock( &Send_mutex[ inet->instance]);
 //				printf( "net%d  linkState up \n", inet->instance);
 //				sem_post( &p_netif->Transmit_Done_sem);
 			}
+			else
+			{
+				p_netif->state &= ~NETIF_FLAG_LINK_UP;
+			}
 
-			if( p_netif->link_callback)
-				p_netif->link_callback( p_netif);
+//			if( p_netif->link_callback)
+//				p_netif->link_callback( p_netif);
 
 		}
 		if(  inet->isr_status & ISR_ERROR)
@@ -429,10 +442,16 @@ static err_t create_low_level_netif( struct netif * netif)
 	if( p_netif->nicContext == NULL)
 			goto err2;
 	p_netif->instance = netif->num;
+	//接受缓存配置成与Enc624的接受缓存一样大
+	p_netif->rxpbuf_head = \
+			pbuf_alloc( PBUF_RAW, ENC624J600_RX_BUFFER_STOP - ENC624J600_RX_BUFFER_START, PBUF_POOL);
+//	printf("eth%d rxpbuf_head = %p \n", p_netif->instance, p_netif->rxpbuf_head);
+
+
 	//未指定mac值就设置成随机值
 	if(macCompAddr(&netif->hwaddr, &MAC_UNSPECIFIED_ADDR) == 0)
 	{
-		seed = (int) time( NULL );
+		seed = (int) time( NULL ) + netif->num * 4;
 		srand( seed++ );
 		p_netif->macAddr.w[0] = rand()%0xffff;		//0 ~ 65535
 		srand(  seed++ );
@@ -449,7 +468,10 @@ static err_t create_low_level_netif( struct netif * netif)
 	if( netif->mtu)
 		enc624j600Driver.mtu = netif->mtu;
 	else
+	{
 		netif->mtu = enc624j600Driver.mtu;
+		netif->mtu = enc624j600Driver.mtu;
+	}
 
 	sprintf( p_netif->name, "%s%d", PRE_NET_NAME,p_netif->instance);
 	netif->name =  p_netif->name;
@@ -468,7 +490,9 @@ static err_t destory_low_level_netif( struct netif * netif)
 {
 
 	NetInterface	*p_netif = netif->ll_netif;
+//	printf("invoking pbuf_free at :%s %s %d \n", __FILE__, __func__, __LINE__);
 
+	pbuf_free( p_netif->rxpbuf);
 	free( p_netif->nicContext);
 	free( p_netif);
 

@@ -25,12 +25,13 @@
 
 
 
-#define		ISR_TX_EVENT ( 1 << 0)
-#define		ISR_RX_EVENT ( 1 << 1)
+#define		ISR_TX_EVENT 		( 1 << 0)
+#define		ISR_RX_EVENT 		( 1 << 1)
 #define		ISR_LINK_STATUS_CHG ( 1 << 2)
-#define		ISR_RECV_PACKET ( 1 << 3)
-#define		ISR_TRAN_COMPLETE ( 1 << 4)
-#define		ISR_PROCESSING ( 1 << 5)			//
+#define		ISR_RECV_PACKET 	( 1 << 3)
+#define		ISR_TRAN_COMPLETE 	( 1 << 4)
+#define		ISR_PROCESSING 		( 1 << 5)			//
+#define		ISR_RECV_ABORT		( 1 << 6)
 
 #define		ISR_ERROR ( 1 << 31)
 
@@ -67,19 +68,20 @@ typedef struct
 	Drive_Gpmc				*busDriver;
 	Drive_Gpio				*extIntDriver;
 
-	bool					speed100;
-	bool					fullDuplex;
-	bool					linkState;
-	uint8_t					instance;
+	int					speed100;
+	int					fullDuplex;
+	int					linkState;
+	int					instance;
 
 	int 					nicRxEvent;
 	int						nicTxEvent;
 
-	pthread_t				tid;
+	pthread_t				isr_tid;
 	pthread_t				send_tid;
 	volatile uint32_t		isr_status;
 	void					*hl_netif;		//上一层的网络接口
-	void					*rxpbuf;
+	struct pbuf				*rxpbuf_head;
+	struct pbuf				*rxpbuf;
 
 
 }NetInterface;

@@ -42,12 +42,14 @@ typedef int err_t;
 
 
 
-#define ERR_UNKOWN     -16    /* 未知错误      */
-#define ERR_BAD_PARAMETER     -17    /* 错误参数      */
-#define ERR_ERROR_INDEX     -18    /* 错误索引      */
-#define ERR_UNINITIALIZED     -19    /* 未初始化的变量或子系统      */
+#define ERR_UNKOWN     			-16    /* 未知错误      */
+#define ERR_BAD_PARAMETER    	-17    /* 错误参数      */
+#define ERR_ERROR_INDEX     	-18    /* 错误索引      */
+#define ERR_UNINITIALIZED     	-19    /* 未初始化的变量或子系统      */
 #define ERR_CATASTROPHIC_ERR	-20 /* 灾难性错误			*/
 #define ERR_UNAVAILABLE			-21	  /* 不可获取的资源			*/
+#define ERR_TIMEOUT				-22	  		/* 不可获取的资源			*/
+#define ERR_BUSY     			-23    /*       */
 /*
 err_t :
 MSB  ----------|----------- LSB

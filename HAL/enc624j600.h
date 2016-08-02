@@ -37,7 +37,7 @@
 //Receive and transmit buffers
 #define ENC624J600_TX_BUFFER_START 0x0000
 #define ENC624J600_TX_BUFFER_STOP  0x17FE
-#define ENC624J600_RX_BUFFER_START 0x1800
+#define ENC624J600_RX_BUFFER_START 0x800			//sundh 0x1800 -> 800
 #define ENC624J600_RX_BUFFER_STOP  0x5FFE
 
 //SPI command set
@@ -498,13 +498,9 @@ typedef struct NIC_drive
 	err_t 	( *SetMacFilter)(NetInterface *interface);
 	err_t 	( *SendPacket)(NetInterface *interface, const NetBuffer *buffer, size_t offset);
 	err_t 	( *destory)(NetInterface *interface);
+	err_t 	( *restart)(NetInterface *interface);
 
 
-	void 	*unkonw2;
-	bool	bool_xx1;
-	bool	bool_xx2;
-	bool	bool_xx3;
-	char	rese;
 }NicDriver;
 //ENC624J600 driver
 NicDriver enc624j600Driver;
@@ -512,6 +508,7 @@ NicDriver enc624j600Driver;
 //ENC624J600 related functions
 err_t enc624j600Init(NetInterface *interface);
 err_t enc624j600destory(NetInterface *interface);
+err_t enc624j600Restart(NetInterface *interface);
 err_t enc624j600SoftReset(NetInterface *interface);
 
 void enc624j600Tick(NetInterface *interface);

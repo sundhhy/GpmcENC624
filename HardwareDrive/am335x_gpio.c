@@ -51,7 +51,6 @@ static err_t gpio_init(Drive_Gpio *t)
 	int 			i = 0;
 
 	 assert( config->intr_line < 2);
-	assert( config->intr_type < 4);
 
 	cthis->gpio_vbase = mmap_device_io( AM335X_GPIO_SIZE, GpioBase[ config->pin_group]);
 #ifdef DEBUG_GPIO

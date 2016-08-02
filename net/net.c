@@ -66,9 +66,29 @@ err_t nicProcessPacket( NetInterface * Inet, uint8_t *frame, int len)
 
 	struct pbuf *p_buf = ( struct pbuf *) ( Inet->rxpbuf);
 	struct netif *pnet = ( struct netif *) ( Inet->hl_netif);
-	p_buf->len = len;
 
-	ethernet_input( p_buf, pnet);
+	//把数据全部收完或者接受内存用尽才进行处理
+	if( len)
+	{
+		p_buf->len = len;
+
+		p_buf = p_buf->next;
+
+		Dubug_info.recv_count[ Inet->instance] ++;
+		if( p_buf)
+		{
+			Inet->rxpbuf = p_buf;
+			Inet->ethFrame = p_buf->payload;
+			return ERR_OK;
+		}
+	}
+	else
+	{
+		p_buf->flags = 1;		//结束标志
+	}
+
+
+	ethernet_input( Inet->rxpbuf_head, pnet);
 
 
 //	switch( *protocol)

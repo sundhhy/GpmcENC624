@@ -97,7 +97,19 @@ etharp_arp_input(struct netif *netif, struct eth_addr *ethaddr, struct pbuf *p)
 				if( ( macCompAddr( &chitic_hdr->dhwaddr, netif->hwaddr) == 0) || \
 					( macCompAddr( &chitic_hdr->dhwaddr, &ethbroadcast) == 0))
 				{
-					struct pbuf *reply_pbuf = pbuf_alloc( PBUF_RAW, p->len, PBUF_POOL);
+					struct pbuf *reply_pbuf = (struct pbuf *)netif->reply_pbuf;
+//					struct pbuf * reply_pbuf = pbuf_alloc( PBUF_RAW,netif->mtu, PBUF_POOL);
+					if( reply_pbuf == NULL)
+					{
+						printf("reply_pbuf no buf: %s,%s,%d \n", __FILE__, __func__, __LINE__);
+						break;
+//						reply_pbuf = pbuf_alloc( PBUF_RAW,netif->mtu, PBUF_POOL);
+//						netif->reply_pbuf = reply_pbuf;
+
+					}
+					//引用计算加1，防止在发送后，被释放掉。
+					reply_pbuf->ref ++;
+					reply_pbuf->len = p->len;
 					ETHADDR16_COPY(&chitic_hdr->dhwaddr, &chitic_hdr->shwaddr);
 					ETHADDR16_COPY(&chitic_hdr->shwaddr, netif->hwaddr);
 					chitic_hdr->opcode = htons(ARP_REPLY);
@@ -199,6 +211,7 @@ err_t ethernet_input(struct pbuf *p, struct netif *netif)
 	  type = ethhdr->type;
 
 
+
 	  switch( type)
 	  {
 		case PP_HTONS(ETHTYPE_ARP):
@@ -210,7 +223,25 @@ err_t ethernet_input(struct pbuf *p, struct netif *netif)
 			break;
 		case PP_HTONS(ETHTYPE_CHITIC):
 			if( netif->input)
-				return netif->input( p, netif);
+			{
+
+
+
+				while(p)
+				{
+					if( p->flags)	//结束标志
+					{
+						p->flags = 0;
+						break;
+					}
+					netif->input( p, netif);
+
+
+					p = p->next;
+
+				}
+
+			}
 			break;
 	  }
 

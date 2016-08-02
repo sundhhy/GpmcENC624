@@ -62,10 +62,8 @@ NicDriver enc624j600Driver =
    enc624j600SetMacFilter,
    enc624j600SendPacket,
    enc624j600destory,
-   NULL,
-   TRUE,
-   TRUE,
-   TRUE
+   enc624j600SoftReset,
+
 };
 
 MacAddr_u16	MAC_UNSPECIFIED_ADDR = { { 0, 0, 0}};
@@ -86,7 +84,7 @@ err_t enc624j600Init(NetInterface *interface)
 
 
    //Debug message
-   TRACE_INFO("Initializing %s start...\r\n", interface->name);
+//   TRACE_INFO("Initializing %s start...\r\n", interface->name);
 
    //ENC接口连接到GPMC总线和GPIO中断引脚
 
@@ -144,7 +142,11 @@ err_t enc624j600Init(NetInterface *interface)
    context->nextPacketPointer = ENC624J600_RX_BUFFER_START;
 
    //First, issue a system reset
-   enc624j600SoftReset(interface);
+   if( enc624j600SoftReset(interface))
+   {
+	   printf(" reset enc624 fail \n");
+	   return ERR_CATASTROPHIC_ERR;
+   }
 
    //Disable CLKOUT output
    WriteReg[I_type](interface, ENC624J600_REG_ECON2, ECON2_ETHEN | ECON2_STRCH);
@@ -212,13 +214,15 @@ err_t enc624j600Init(NetInterface *interface)
    enc624j600DumpPhyReg(interface);
 
    //Force the TCP/IP stack to check the link state
+   sleep(1);
    osSetEvent(&interface->nicRxEvent);
    //ENC624J600 transmitter is now ready to send
+   sleep(1);
    osSetEvent(&interface->nicTxEvent);
 
 
    //Debug message
-     TRACE_INFO("Initializing ENC624J600 Ethernet controller finished...\r\n");
+     TRACE_INFO("Initializing ENC624J600 Ethernet controller successed !\r\n");
 
 #endif
    //Successful initialization
@@ -244,7 +248,103 @@ err_t enc624j600destory(NetInterface *interface)
 
 }
 
+err_t enc624j600Restart(NetInterface *interface)
+{
+   Enc624j600Context *context;
 
+   //Point to the driver context
+   context = (Enc624j600Context *) interface->nicContext;
+   //Initialize driver specific variables
+   context->nextPacketPointer = ENC624J600_RX_BUFFER_START;
+
+   //First, issue a system reset
+   if( enc624j600SoftReset(interface))
+   {
+	   printf(" reset enc624 fail \n");
+	   return ERR_CATASTROPHIC_ERR;
+   }
+
+   //Disable CLKOUT output
+   WriteReg[I_type](interface, ENC624J600_REG_ECON2, ECON2_ETHEN | ECON2_STRCH);
+
+   //Optionally set the station MAC address
+   if(macCompAddr(&interface->macAddr, &MAC_UNSPECIFIED_ADDR) == 0)
+   {
+      //Use the factory preprogrammed station address
+      interface->macAddr.w[0] = ReadReg[ I_type](interface, ENC624J600_REG_MAADR1);
+      interface->macAddr.w[1] = ReadReg[ I_type](interface, ENC624J600_REG_MAADR2);
+      interface->macAddr.w[2] = ReadReg[ I_type](interface, ENC624J600_REG_MAADR3);
+   }
+   else
+   {
+      //Override the factory preprogrammed address
+      WriteReg[I_type](interface, ENC624J600_REG_MAADR1, interface->macAddr.w[0]);
+      WriteReg[I_type](interface, ENC624J600_REG_MAADR2, interface->macAddr.w[1]);
+      WriteReg[I_type](interface, ENC624J600_REG_MAADR3, interface->macAddr.w[2]);
+   }
+
+   //Set receive buffer location
+   WriteReg[I_type](interface, ENC624J600_REG_ERXST, ENC624J600_RX_BUFFER_START);
+   //Program the tail pointer ERXTAIL to the last even address of the buffer
+   WriteReg[I_type](interface, ENC624J600_REG_ERXTAIL, ENC624J600_RX_BUFFER_STOP);
+
+   //Configure the receive filters
+   WriteReg[I_type](interface, ENC624J600_REG_ERXFCON, ERXFCON_HTEN |
+      ERXFCON_CRCEN | ERXFCON_RUNTEN | ERXFCON_UCEN | ERXFCON_BCEN);
+
+   //Initialize the hash table
+   WriteReg[I_type](interface, ENC624J600_REG_EHT1, 0x0000);
+   WriteReg[I_type](interface, ENC624J600_REG_EHT2, 0x0000);
+   WriteReg[I_type](interface, ENC624J600_REG_EHT3, 0x0000);
+   WriteReg[I_type](interface, ENC624J600_REG_EHT4, 0x0000);
+
+   //All short frames will be zero-padded to 60 bytes and a valid CRC is then appended
+   WriteReg[I_type](interface, ENC624J600_REG_MACON2,
+
+      MACON2_DEFER | MACON2_PADCFG0 | MACON2_TXCRCEN | MACON2_R1 );
+
+   //Program the MAMXFL register with the maximum frame length to be accepted
+   WriteReg[I_type](interface, ENC624J600_REG_MAMXFL, 1518);
+
+   //PHY initialization
+   enc624j600WritePhyReg(interface, ENC624J600_PHY_REG_PHANA, PHANA_ADPAUS0 |
+      PHANA_AD100FD | PHANA_AD100 | PHANA_AD10FD | PHANA_AD10 | PHANA_ADIEEE0);
+
+   //sundh add
+   enc624j600WritePhyReg(interface, ENC624J600_PHY_REG_PHCON1, PHCON1_ANEN | PHCON1_RENEG );
+
+   //Clear interrupt flags
+   WriteReg[I_type](interface, ENC624J600_REG_EIR, 0x0000);
+
+   //Configure interrupts as desired
+   WriteReg[I_type](interface, ENC624J600_REG_EIE, EIE_INTIE |
+
+  EIE_LINKIE | EIE_PKTIE | EIE_TXIE | EIE_TXABTIE | EIE_PCFULIE | EIE_RXABTIE);		//sundh add 'EIE_RXABTIE'
+
+
+   //Set RXEN to enable reception
+   SetBit[ I_type](interface, ENC624J600_REG_ECON1, ECON1_RXEN);
+
+   //Dump registers for debugging purpose
+   enc624j600DumpReg(interface);
+   enc624j600DumpPhyReg(interface);
+
+   //Force the TCP/IP stack to check the link state
+   sleep(1);
+   osSetEvent(&interface->nicRxEvent);
+   //ENC624J600 transmitter is now ready to send
+   sleep(1);
+   osSetEvent(&interface->nicTxEvent);
+
+
+   //Debug message
+     TRACE_INFO("Initializing ENC624J600 Ethernet controller successed !\r\n");
+
+
+   //Successful initialization
+   return NO_ERROR;
+
+}
 /**
  * @brief ENC624J600 controller reset
  * @param[in] interface Underlying network interface
@@ -359,21 +459,30 @@ bool enc624j600IrqHandler(void *arg)
       flag |= osSetEventFromIsr(arg, ISR_LINK_STATUS_CHG);
    }
    //Packet received?
-   if(status & EIR_PKTIF)
+   if(status & ( EIR_PKTIF ))
    {
+
       //Disable PKTIE interrupt
-      ClearBit[ I_type](interface, ENC624J600_REG_EIE, EIE_PKTIE);
+      ClearBit[ I_type](interface, ENC624J600_REG_EIE, EIE_PKTIE );
       //Notify the user that a packet has been received
       flag |= osSetEventFromIsr(arg, ISR_RECV_PACKET);
    }
+
+   //Packet abort
+	 if(status & (  EIE_RXABTIE))		//sundh add EIE_RXABTIE
+	 {
+
+		Dubug_info.enc624_recv_abort[interface->instance] ++;
+		//Disable PKTIE interrupt
+		ClearBit[ I_type](interface, ENC624J600_REG_EIE, EIE_RXABTIE);
+		//Notify the user that a packet has been received
+		flag |= osSetEventFromIsr(arg, ISR_RECV_ABORT);
+	 }
    //Packet transmission complete?
    if(status & (EIR_TXIF | EIR_TXABTIF))
    {
       //Notify the user that the transmitter is ready to send
       flag |= osSetEventFromIsr(arg, ISR_TRAN_COMPLETE);
-
-      //Disable PKTIE interrupt
-//      ClearBit[ I_type](interface, ENC624J600_REG_EIE, EIE_TXIE | EIE_TXABTIE);	//sundh add
       //Clear interrupt flag
       ClearBit[ I_type](interface, ENC624J600_REG_EIR, EIR_TXIF | EIR_TXABTIF);
    }
@@ -396,92 +505,117 @@ void enc624j600EventHandler(NetInterface *interface)
 {
    err_t error;
    uint16_t status;
-   uint16_t	run = 1;
+   uint16_t	state;
    size_t length;
 
 
 
    Dubug_info.EventHandler[ interface->instance] ++;
-//   while( run)
+
+
+   //Read interrupt status register
+   status = ReadReg[ I_type](interface, ENC624J600_REG_EIR);
+   //Check whether the link state has changed
+   if(status & EIR_LINKIF)
    {
-	   run = 0;
-	   //Read interrupt status register
-	   status = ReadReg[ I_type](interface, ENC624J600_REG_EIR);
-	   //Check whether the link state has changed
-	   if(status & EIR_LINKIF)
-	   {
-		   run = 1;
-		  //Clear interrupt flag
-		  ClearBit[ I_type](interface, ENC624J600_REG_EIR, EIR_LINKIF);
-		  //Read Ethernet status register
-		  status = ReadReg[ I_type](interface, ENC624J600_REG_ESTAT);
+	  //Clear interrupt flag
+	  ClearBit[ I_type](interface, ENC624J600_REG_EIR, EIR_LINKIF);
+	  //Read Ethernet status register
+	  status = ReadReg[ I_type](interface, ENC624J600_REG_ESTAT);
+	  enc624j600_print_reg( interface, ENC624J600_REG_ESTAT);
+	  printf(" read status = 0x%04x \n",status );
+	  //Check link state
+	  if(status & ESTAT_PHYLNK)
+	  {
+		 //Link is up
+		 interface->linkState = TRUE;
 
-		  //Check link state
-		  if(status & ESTAT_PHYLNK)
-		  {
-			 //Link is up
-			 interface->linkState = TRUE;
+		 //Read PHY status register 3
 
-			 //Read PHY status register 3
+		 status = enc624j600ReadPhyReg(interface, ENC624J600_PHY_REG_PHSTAT3);
+		 //Get current speed
+		 interface->speed100 = (status & PHSTAT3_SPDDPX1) ? TRUE : FALSE;
+		 //Determine the new duplex mode
+		 interface->fullDuplex = (status & PHSTAT3_SPDDPX2) ? TRUE : FALSE;
 
-			 status = enc624j600ReadPhyReg(interface, ENC624J600_PHY_REG_PHSTAT3);
-			 //Get current speed
-			 interface->speed100 = (status & PHSTAT3_SPDDPX1) ? TRUE : FALSE;
-			 //Determine the new duplex mode
-			 interface->fullDuplex = (status & PHSTAT3_SPDDPX2) ? TRUE : FALSE;
+		 //Configure MAC duplex mode for proper operation
+		 enc624j600ConfigureDuplexMode(interface);
 
-			 //Configure MAC duplex mode for proper operation
-			 enc624j600ConfigureDuplexMode(interface);
+		 //Display link state
+		 //TRACE_INFO
+		 printf("Link is up (%s)... ", interface->name);
 
-			 //Display link state
-			 TRACE_INFO("Link is up (%s)... ", interface->name);
+		 //Display actual speed and duplex mode
+		 printf("%s %s\r\n",
+			interface->speed100 ? "100BASE-TX" : "10BASE-T",
+			interface->fullDuplex ? "Full-Duplex" : "Half-Duplex");
+	  }
+	  else
+	  {
+		 //Link is down
+		 interface->linkState = FALSE;
+		 Dubug_info.linkdown_count[interface->instance] ++;
+		 //Display link state
+		 printf("Link is down (%s) ...\r\n", interface->name);
+	  }
+	  //Process link state change event
+	  nicNotifyLinkChange(interface);
+   }
+   //Check whether a packet has been received?
+   if(status & EIR_PKTIF )
+   {
 
-			 //Display actual speed and duplex mode
-			 TRACE_INFO("%s %s\r\n",
-				interface->speed100 ? "100BASE-TX" : "10BASE-T",
-				interface->fullDuplex ? "Full-Duplex" : "Half-Duplex");
-		  }
-		  else
-		  {
-			 //Link is down
-			 interface->linkState = FALSE;
-			 //Display link state
-			 TRACE_INFO("Link is down (%s)...\r\n", interface->name);
-		  }
-		  //Process link state change event
-		  nicNotifyLinkChange(interface);
-	   }
-	   //Check whether a packet has been received?
-	   if(status & EIR_PKTIF)
-	   {
-		   run = 1;
-		  //Clear interrupt flag
-		  ClearBit[ I_type](interface, ENC624J600_REG_EIR, EIR_PKTIF);
+	  //Clear interrupt flag
+	  ClearBit[ I_type](interface, ENC624J600_REG_EIR, EIR_PKTIF );
 
-		  //Process all pending packets
-		  do
-		  {
-			 //Read incoming packet
-			  if( interface->ethFrame == NULL)
-				  break;
-			 error = enc624_PSP_ReceivePacket(interface,
-				interface->ethFrame, ETH_MAX_FRAME_SIZE, &length);
+	  //Process all pending packets
+	  do
+	  {
+		 //Read incoming packet
+		  if( interface->ethFrame == NULL)
+			  break;
+		 length = 0;
+		 error = enc624_PSP_ReceivePacket(interface,
+			interface->ethFrame, ETH_MAX_FRAME_SIZE, &length);
 
-			 //Check whether a valid packet has been received
-			 if(!error)
-			 {
-				//Pass the packet to the upper layer
-				nicProcessPacket(interface, interface->ethFrame, length);
-			 }
+		 //Check whether a valid packet has been received
+//		 if(error)
+//		 {
+//			//Pass the packet to the upper layer
+//			nicProcessPacket(interface, interface->ethFrame, length);
+//
+//		 }
 
-			 //No more data in the receive buffer?
-		  } while(error != ERROR_BUFFER_EMPTY);
-	   }
-   }  //while(run)
+		 nicProcessPacket(interface, interface->ethFrame, length);		//sundh
+
+		 //No more data in the receive buffer?
+	  } while(error != ERROR_BUFFER_EMPTY);
+   }
+   if(status &  EIR_RXABTIF)
+   {
+//	   struct rsv rsv;
+//	   uint16_t	point;
+//	   uint16_t	reg;
+//	   Enc624j600Context *context;
+
+
+	   ClearBit[ I_type](interface, ENC624J600_REG_EIR, EIR_RXABTIF);
+
+//		reg = enc624j600_print_reg( interface, ENC624J600_REG_ERXST);
+//		printf("\n");
+//	   context = (Enc624j600Context *) interface->nicContext;
+////	   context->nextPacketPointer = ENC624J600_RX_BUFFER_START;
+//
+//	   point = context->nextPacketPointer;
+//	   enc624_PSP_ReadSram( interface, &point, (uint8_t *)&rsv, sizeof(rsv));
+//	   point = 0;
+   }
+
+
 
    //Re-enable LINKIE and PKTIE interrupts
 //   SetBit[ I_type](interface, ENC624J600_REG_EIE, EIE_LINKIE | EIE_PKTIE );
-   SetBit[ I_type](interface, ENC624J600_REG_EIE, EIE_LINKIE | EIE_PKTIE | EIR_TXIF | EIR_TXABTIF);
+   SetBit[ I_type](interface, ENC624J600_REG_EIE, EIE_LINKIE | EIE_PKTIE | EIR_TXIF | EIR_TXABTIF | EIE_RXABTIE);
 //   TRACE_INFO("%s status (%04x) \n", interface->name, status);
 
 
@@ -559,7 +693,7 @@ err_t enc624j600SendPacket(NetInterface *interface,
       //The transmitter can accept another packet
       osSetEvent(&interface->nicTxEvent);
       //Report an error
-      return ERROR_T( ERROR_INVALID_LENGTH);
+      return ERROR_FAILURE;
    }
 
    //Make sure the link is up before transmitting the frame
@@ -568,14 +702,15 @@ err_t enc624j600SendPacket(NetInterface *interface,
       //The transmitter can accept another packet
       osSetEventFromIsr(interface, ISR_TRAN_COMPLETE);
       //Drop current packet
-      return NO_ERROR;
+      return ERROR_FAILURE;
    }
 
    //Ensure that the transmitter is ready to send
-   if(ReadReg[ I_type](interface, ENC624J600_REG_ECON1) & ECON1_TXRTS)
-      return ERROR_FAILURE;
-
-
+	if(ReadReg[ I_type](interface, ENC624J600_REG_ECON1) & ECON1_TXRTS)
+	{
+		Dubug_info.send_busy_count[interface->instance]++;
+	   return ERR_BUSY;
+	}
    point = ENC624J600_TX_BUFFER_START;
    enc624_PSP_WriteSram(interface, &point, buffer, offset);
 
@@ -594,6 +729,7 @@ err_t enc624j600SendPacket(NetInterface *interface,
    ClearBit[ I_type](interface, ENC624J600_REG_EIR, EIR_TXIF | EIR_TXABTIF);
    //Set the TXRTS bit to initiate transmission
    SetBit[ I_type](interface, ENC624J600_REG_ECON1, ECON1_TXRTS);
+
 
    //Successful processing
    return NO_ERROR;
@@ -624,15 +760,31 @@ err_t enc624_PSP_ReceivePacket(NetInterface *interface,
 	if(ReadReg[ I_type](interface, ENC624J600_REG_ESTAT) & ESTAT_PKTCNT)
 	{
 		struct rsv rsv;
-//		uint16_t n;
+
+		uint16_t reg;
 //		uint32_t status;
+
+
+
 		enc624_PSP_ReadSram( interface, &point, (uint8_t *)&rsv, sizeof(rsv));
-		//Read the first two bytes, which are the address of the next packet
-//		enc624_PSP_ReadSram( interface, &point , (uint8_t *)&context->nextPacketPointer, 2);
-//		//Get the length of the received frame in bytes
-//		enc624_PSP_ReadSram(interface, &point , (uint8_t *) &n, 2);
-//		//Read the receive status vector (RSV)
-//		enc624_PSP_ReadSram(interface,  &point, (uint8_t *) &status, 4);
+
+		//下面这种情况是导致丢帧，EIR_RXABTIF， 应用层数据被1d88填充的原因
+		//1 在监测到发送忙时，延迟100us
+		//2 优化写时序
+		//3 正确使用0x5fff作为ENC624的接受缓存的尾部
+		//使用了这3个措施后，没有再出现下面的情况。
+//		if( rsv.next_packet <  ENC624J600_RX_BUFFER_START || rsv.next_packet > ENC624J600_RX_BUFFER_STOP)
+//		{
+//			context->nextPacketPointer = ENC624J600_RX_BUFFER_START;
+//			reg = enc624j600_print_reg( interface, ENC624J600_REG_ERXST);
+//			reg = enc624j600_print_reg( interface, ENC624J600_REG_ERXTAIL);
+//			reg = enc624j600_print_reg( interface, ENC624J600_REG_ETXST);
+//			reg = enc624j600_print_reg( interface, ENC624J600_REG_ETXLEN);
+//			WriteReg[I_type](interface, ENC624J600_REG_ERXST, ENC624J600_RX_BUFFER_START);
+//			WriteReg[I_type](interface, ENC624J600_REG_ERXTAIL, ENC624J600_RX_BUFFER_STOP);
+//
+//			return ERROR_INVALID_PACKET;
+//		}
 
 	  //Make sure no error occurred
 	  if( rsv.rxstat & RSV_RECEIVED_OK && rsv.len <= enc624j600Driver.mtu)
@@ -640,6 +792,7 @@ err_t enc624_PSP_ReceivePacket(NetInterface *interface,
 		 //Limit the number of data to read
 		 size = MIN(size, rsv.len);
 		 //Read the Ethernet frame
+
 		 enc624_PSP_ReadSram(interface, &point, buffer, size);
 
 		 //Total number of bytes that have been received
@@ -653,6 +806,7 @@ err_t enc624_PSP_ReceivePacket(NetInterface *interface,
 		 error = ERROR_INVALID_PACKET;
 	  }
 	  context->nextPacketPointer = rsv.next_packet;
+//	  context->nextPacketPointer = rsv.next_packet - 2;
 	  //Update the ERXTAIL pointer value to the point where the packet
 	  //has been processed, taking care to wrap back at the end of the
 	  //received memory buffer
@@ -933,6 +1087,10 @@ void enc624_PSP_WriteSram(NetInterface *interface,
 
 
 	for( i = 0; i < buffer->len; i ++) {
+//		if( buffer->data[i + offset] == 0x1d && buffer->data[i + offset + 1] == 0x88)
+//		{
+//			printf("send 1d88 \n");
+//		}
 		interface->busDriver->write_u8( interface->busDriver, *address, buffer->data[i + offset]);
 		*address = *address + 1;
 	}
@@ -997,7 +1155,12 @@ void enc624_PSP_ReadSram(NetInterface *interface,
    uint16_t *address, uint8_t *data, size_t length)
 {
 	int i;
+
 	for( i = 0; i < length; i ++) {
+		if( *address > (  ENC624J600_RX_BUFFER_STOP + 1))
+		{
+			*address = ENC624J600_RX_BUFFER_START;
+		}
 		data[i] = interface->busDriver->read_u8( interface->busDriver, *address);
 		*address = *address + 1;
 	}
@@ -1141,9 +1304,7 @@ uint16_t enc624j600_print_reg(NetInterface *interface, uint16_t addr)
 {
 	uint16_t	reg_val = ReadReg[ I_type](interface, addr);
 
-	TRACE_DEBUG( " print reg 0x%02x ", addr);
-	TRACE_DEBUG("0x%04x ", reg_val);
-	TRACE_DEBUG("\r\n");
+	printf( "%s [0x%02x]=0x%04x ", interface->name, addr, reg_val);
 	return reg_val;
 }
 
@@ -1205,17 +1366,17 @@ void enc624j600DumpPhyReg(NetInterface *interface)
 {
 #if (TRACE_LEVEL >= TRACE_LEVEL_DEBUG)
    uint8_t i;
-   TRACE_DEBUG( " Dump phy reg \r\n");
+   printf( " Dump phy reg \r\n");
    //Loop through PHY registers
    for(i = 0; i < 32; i++)
    {
       //Display current PHY register
 
-      TRACE_DEBUG("%02x: 0x%04x \r\n", i, enc624j600ReadPhyReg(interface, i));
+	   printf("%02x: 0x%04x \r\n", i, enc624j600ReadPhyReg(interface, i));
 
    }
 
    //Terminate with a line feed
-   TRACE_DEBUG("\r\n");
+   printf("\r\n");
 #endif
 }

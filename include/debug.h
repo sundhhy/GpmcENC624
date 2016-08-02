@@ -18,7 +18,7 @@
 
 
 
-#define DEBUG_SWITCH
+//#define DEBUG_SWITCH
 
 #ifdef    DEBUG_SWITCH
 #define TRACE_INFO(fmt,args...) printf(fmt, ##args)
@@ -26,7 +26,7 @@
 #define TRACE_INFO(fmt,args...) /*do nothing */
 #endif
 
-#define 	DEBUG_PRINT
+//#define 	DEBUG_PRINT
 #ifdef    DEBUG_PRINT
 #define TRACE_DEBUG(fmt,args...) printf(fmt, ##args)
 #else
@@ -54,11 +54,22 @@ typedef struct {
 	uint32_t		event_count[2];
 	uint32_t		EventHandler[2];
 	uint32_t		irq_set_count;
+	uint32_t		linkdown_count[2];
+	uint32_t		enc624_recv_abort[2];
+
+	uint32_t		send_count[2];
+	uint32_t		pbuf_malloc_fail[2];
+	uint32_t		recv_count[2];
+	uint32_t		recv_err_seq[2];
+	uint32_t		send_busy_count[2];
+
+
+	uint32_t		enc624_test_thread_run[2];
 }Sys_deginfo;
 
 
 
-#define LWIP_DEBUGF(debug, message)
+#define LWIP_DEBUGF(debug, message) TRACE_DEBUG(message)
 
 
 #define LWIP_ASSERT(message, assertion) do { if(!(assertion)) \
