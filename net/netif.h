@@ -163,6 +163,7 @@ struct netif {
    *  to state information for the device. */
   uint32_t state;
 
+  void *uplayer;			///< 上层接口
   /* 低层 网络接口			*/
   void *ll_netif;
   void	*reply_pbuf;			//应答用的pbuf
@@ -171,6 +172,8 @@ struct netif {
 //
 //  pthread_mutex_t	mutex_send;
   /* the hostname for this netif, NULL is a valid value */
+
+  /* the hostname for this netif, NULL is a valid value */
   char*  hostname;
 
   /** maximum transfer unit (in bytes) */
@@ -178,22 +181,26 @@ struct netif {
   /** number of this interface */
   u16_t num;
 
-
+  /** number of bytes used in hwaddr */
+  u16_t	myid;
   /** number of bytes used in hwaddr */
   u8_t hwaddr_len;
-  /** link level hardware address of this interface */
-  u8_t hwaddr[NETIF_MAX_HWADDR_LEN];
   /** flags (see NETIF_FLAG_ above) */
   u8_t flags;
+  /** link level hardware address of this interface */
+  u8_t *hwaddr;
   /** descriptive abbreviation */
   char *name;
 
 };
 
 typedef struct {
+	u16_t	netid;
 	u8_t 	target_hwaddr[NETIF_MAX_HWADDR_LEN];
+
+	int		hits;			///< 使用频率。对已经建立的连接，每次发送时，发送的连接的hits加1，同时将其他连接的hits减1
 	u8_t	status;
-	u8_t	rese;
+	u8_t	rese[3];
 }connect_info;
 
 /** The list of network interfaces. */
@@ -207,8 +214,8 @@ void netif_init(struct netif * netif);
 void netif_remove(struct netif * netif);
 void netif_restart(struct netif * netif);
 
-int netif_connect( struct netif * netif, u8_t* hwaddr);
-int netif_disconnect( struct netif * netif, int handle);
+int netif_connect( struct netif * netif, u16_t d_id);
+int netif_disconnect( struct netif * netif, int idx);
 
 /* Returns a network interface given its name. The name is of the form
    "et0", where the first two letters are the "name" field in the
@@ -242,8 +249,10 @@ void netif_set_link_callback(struct netif *netif, netif_status_callback_fn link_
 #define netif_get_hostname(netif) (((netif) != NULL) ? ((netif)->hostname) : NULL)
 
 
-extern connect_info	Eth_Cnnect_info[CONNECT_INFO_NUM];
+extern connect_info	Eth_Cnnect_info[ARP_CACHE_NUM];
 extern const struct eth_addr ethbroadcast;
+extern const struct eth_addr ethzero;
+
 #ifdef __cplusplus
 }
 #endif

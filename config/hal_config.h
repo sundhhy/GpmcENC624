@@ -11,6 +11,9 @@
 #include "hardware_cfg.h"
 
 #define ENC_INTERFACE_PSP 0
+#define NET_INSTANCE_NUM		2 ///< ÍøÂçÐ¾Æ¬µÄÊýÁ¿
+#define	PRE_NET_NAME			"eth"
+#define NET_NAME_LEN			10
 
 struct hal_enc_cfg {
 	int 		interface_type;

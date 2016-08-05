@@ -67,38 +67,36 @@ err_t nicProcessPacket( NetInterface * Inet, uint8_t *frame, int len)
 	struct pbuf *p_buf = ( struct pbuf *) ( Inet->rxpbuf);
 	struct netif *pnet = ( struct netif *) ( Inet->hl_netif);
 
-	//把数据全部收完或者接受内存用尽才进行处理
 	if( len)
 	{
+		p_buf->flags = PBUFFLAG_UNPROCESS;
 		p_buf->len = len;
+		ethernet_input( p_buf, pnet);
 
-		p_buf = p_buf->next;
-
-		Dubug_info.recv_count[ Inet->instance] ++;
-		if( p_buf)
+		///< 本内存的数据还需要处理，则分配新的接收缓存用于接受
+		///< 已经处理好的缓存就用于接收后面的数据
+		if( p_buf->flags != PBUFFLAG_TRASH)
 		{
-			Inet->rxpbuf = p_buf;
-			Inet->ethFrame = p_buf->payload;
-			return ERR_OK;
+			Inet->rxpbuf = pbuf_alloc( PBUF_RAW, pnet->mtu, PBUF_RX_POOL);
+			if( Inet->rxpbuf)
+			{
+				Inet->rxpbuf->flags = PBUFFLAG_TRASH;
+				Inet->ethFrame = Inet->rxpbuf->payload;
+			}
+			else
+			{
+				Inet->ethFrame = NULL;
+			}
 		}
+
 	}
 	else
 	{
-		p_buf->flags = 1;		//结束标志
+		///< 从网络芯片中已经无法读取更多的数据时，不需要继续接收了.
+		///< 回收已经处理掉的数据缓存
+		if( p_buf->flags == PBUFFLAG_TRASH)
+			pbuf_free( p_buf);
 	}
-
-
-	ethernet_input( Inet->rxpbuf_head, pnet);
-
-
-//	switch( *protocol)
-//	{
-//		case
-//	}
-
-//	if( Inet->input)
-//		return Inet->input( p, netif);
-
 	return EXIT_SUCCESS;
 #endif
 }

@@ -22,7 +22,8 @@ typedef enum {
   PBUF_RAM, /* pbuf data is stored in RAM */
   PBUF_ROM, /* pbuf data is stored in ROM */
   PBUF_REF, /* pbuf comes from the pbuf pool */
-  PBUF_POOL /* pbuf payload refers to RAM */
+  PBUF_TX_POOL, /* pbuf payload refers to RAM */
+  PBUF_RX_POOL
 } pbuf_type;
 
 

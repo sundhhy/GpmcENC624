@@ -94,7 +94,6 @@ err_t enc624j600Init(NetInterface *interface)
 	   Drive_PSPDriver[ interface->instance] = Drive_Gpmc_new();
 	   if( Drive_PSPDriver[ interface->instance] == NULL)
 		   return ERROR_T(init_memory_invalid);
-//	   interface->busDriver = SUPER_PTR(Drive_PSPDriver, IBusDrive);
 	   interface->busDriver = Drive_PSPDriver[ interface->instance];
 
 	   WriteReg[ ENC_INTERFACE_PSP] = enc624_PSP_WriteReg;
@@ -152,19 +151,19 @@ err_t enc624j600Init(NetInterface *interface)
    WriteReg[I_type](interface, ENC624J600_REG_ECON2, ECON2_ETHEN | ECON2_STRCH);
 
    //Optionally set the station MAC address
-   if(macCompAddr(&interface->macAddr, &MAC_UNSPECIFIED_ADDR) == 0)
+   if(macCompAddr(interface->macAddr, &MAC_UNSPECIFIED_ADDR) == 0)
    {
       //Use the factory preprogrammed station address
-      interface->macAddr.w[0] = ReadReg[ I_type](interface, ENC624J600_REG_MAADR1);
-      interface->macAddr.w[1] = ReadReg[ I_type](interface, ENC624J600_REG_MAADR2);
-      interface->macAddr.w[2] = ReadReg[ I_type](interface, ENC624J600_REG_MAADR3);
+      interface->macAddr->w[0] = ReadReg[ I_type](interface, ENC624J600_REG_MAADR1);
+      interface->macAddr->w[1] = ReadReg[ I_type](interface, ENC624J600_REG_MAADR2);
+      interface->macAddr->w[2] = ReadReg[ I_type](interface, ENC624J600_REG_MAADR3);
    }
    else
    {
       //Override the factory preprogrammed address
-      WriteReg[I_type](interface, ENC624J600_REG_MAADR1, interface->macAddr.w[0]);
-      WriteReg[I_type](interface, ENC624J600_REG_MAADR2, interface->macAddr.w[1]);
-      WriteReg[I_type](interface, ENC624J600_REG_MAADR3, interface->macAddr.w[2]);
+      WriteReg[I_type](interface, ENC624J600_REG_MAADR1, interface->macAddr->w[0]);
+      WriteReg[I_type](interface, ENC624J600_REG_MAADR2, interface->macAddr->w[1]);
+      WriteReg[I_type](interface, ENC624J600_REG_MAADR3, interface->macAddr->w[2]);
    }
 
    //Set receive buffer location
@@ -191,6 +190,9 @@ err_t enc624j600Init(NetInterface *interface)
    WriteReg[I_type](interface, ENC624J600_REG_MAMXFL, 1518);
 
    //PHY initialization
+
+
+
    enc624j600WritePhyReg(interface, ENC624J600_PHY_REG_PHANA, PHANA_ADPAUS0 |
       PHANA_AD100FD | PHANA_AD100 | PHANA_AD10FD | PHANA_AD10 | PHANA_ADIEEE0);
 
@@ -268,20 +270,20 @@ err_t enc624j600Restart(NetInterface *interface)
    WriteReg[I_type](interface, ENC624J600_REG_ECON2, ECON2_ETHEN | ECON2_STRCH);
 
    //Optionally set the station MAC address
-   if(macCompAddr(&interface->macAddr, &MAC_UNSPECIFIED_ADDR) == 0)
-   {
-      //Use the factory preprogrammed station address
-      interface->macAddr.w[0] = ReadReg[ I_type](interface, ENC624J600_REG_MAADR1);
-      interface->macAddr.w[1] = ReadReg[ I_type](interface, ENC624J600_REG_MAADR2);
-      interface->macAddr.w[2] = ReadReg[ I_type](interface, ENC624J600_REG_MAADR3);
-   }
-   else
-   {
-      //Override the factory preprogrammed address
-      WriteReg[I_type](interface, ENC624J600_REG_MAADR1, interface->macAddr.w[0]);
-      WriteReg[I_type](interface, ENC624J600_REG_MAADR2, interface->macAddr.w[1]);
-      WriteReg[I_type](interface, ENC624J600_REG_MAADR3, interface->macAddr.w[2]);
-   }
+  if(macCompAddr(interface->macAddr, &MAC_UNSPECIFIED_ADDR) == 0)
+  {
+	 //Use the factory preprogrammed station address
+	 interface->macAddr->w[0] = ReadReg[ I_type](interface, ENC624J600_REG_MAADR1);
+	 interface->macAddr->w[1] = ReadReg[ I_type](interface, ENC624J600_REG_MAADR2);
+	 interface->macAddr->w[2] = ReadReg[ I_type](interface, ENC624J600_REG_MAADR3);
+  }
+  else
+  {
+	 //Override the factory preprogrammed address
+	 WriteReg[I_type](interface, ENC624J600_REG_MAADR1, interface->macAddr->w[0]);
+	 WriteReg[I_type](interface, ENC624J600_REG_MAADR2, interface->macAddr->w[1]);
+	 WriteReg[I_type](interface, ENC624J600_REG_MAADR3, interface->macAddr->w[2]);
+  }
 
    //Set receive buffer location
    WriteReg[I_type](interface, ENC624J600_REG_ERXST, ENC624J600_RX_BUFFER_START);
@@ -389,6 +391,7 @@ err_t enc624j600SoftReset(NetInterface *interface)
    //Wait at least 256us for the PHY registers and PHY
    //status bits to become available
    sleep(1);
+
 
    //The controller is now ready to accept further commands
    return EXIT_SUCCESS;
@@ -505,7 +508,6 @@ void enc624j600EventHandler(NetInterface *interface)
 {
    err_t error;
    uint16_t status;
-   uint16_t	state;
    size_t length;
 
 
@@ -516,14 +518,16 @@ void enc624j600EventHandler(NetInterface *interface)
    //Read interrupt status register
    status = ReadReg[ I_type](interface, ENC624J600_REG_EIR);
    //Check whether the link state has changed
+//   enc624j600DumpReg(interface);
+//   enc624j600_print_reg( interface, ENC624J600_REG_EIR);
+//   printf("staus %x \n", status);
    if(status & EIR_LINKIF)
    {
 	  //Clear interrupt flag
 	  ClearBit[ I_type](interface, ENC624J600_REG_EIR, EIR_LINKIF);
 	  //Read Ethernet status register
 	  status = ReadReg[ I_type](interface, ENC624J600_REG_ESTAT);
-	  enc624j600_print_reg( interface, ENC624J600_REG_ESTAT);
-	  printf(" read status = 0x%04x \n",status );
+//	  enc624j600_print_reg( interface, ENC624J600_REG_ESTAT);
 	  //Check link state
 	  if(status & ESTAT_PHYLNK)
 	  {
@@ -564,7 +568,12 @@ void enc624j600EventHandler(NetInterface *interface)
    //Check whether a packet has been received?
    if(status & EIR_PKTIF )
    {
-
+	   // 能收到数据，把连接状态置起来应该没什么问题把。
+	   //这么处理的原因是，会有这么一种情况，是接收中断在处理中，状态变化状态发生了。但是因为中断处理过程中是不会响应其他中断的.
+	   //这会导致程序数据收到了，但是连接状态还是为未连接。
+	   //这里加入的代码就是为了解决这个问题.
+	   if( !interface->linkState )
+		   interface->linkState = TRUE;
 	  //Clear interrupt flag
 	  ClearBit[ I_type](interface, ENC624J600_REG_EIR, EIR_PKTIF );
 
@@ -700,6 +709,7 @@ err_t enc624j600SendPacket(NetInterface *interface,
    if(!interface->linkState)
    {
       //The transmitter can accept another packet
+	   printf("[%s] %s can't send packet, because of linkstate is down \n", interface->name, __func__);
       osSetEventFromIsr(interface, ISR_TRAN_COMPLETE);
       //Drop current packet
       return ERROR_FAILURE;
@@ -1316,14 +1326,14 @@ void enc624j600DumpReg(NetInterface *interface)
    uint16_t address;
    if( I_type == ENC_INTERFACE_PSP)
    {
-	   TRACE_DEBUG( " Dump reg \r\n");
+	   printf( " Dump reg \r\n");
 	   for(i = 0; i < 0xa0; i += 2)
 	   {
-		   TRACE_DEBUG("%02x : ", i);
-		   TRACE_DEBUG("0x%04x ", ReadReg[ I_type](interface, i));
-		   TRACE_DEBUG("\r\n");
+		   printf("%02x : ", i);
+		   printf("0x%04x ", ReadReg[ I_type](interface, i));
+		   printf("\r\n");
 	   }
-	   TRACE_DEBUG("\r\n");
+	   printf("\r\n");
    }
    else
    {

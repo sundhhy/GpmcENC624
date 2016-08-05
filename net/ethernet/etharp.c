@@ -85,60 +85,60 @@ etharp_arp_input(struct netif *netif, struct eth_addr *ethaddr, struct pbuf *p)
 	}
 	ETHARP_STATS_INC(etharp.recv);
 
-	//自定义的协议。对于请求报文，对比接收方MAC与本机MAC，一致将发送方和接收方对换位置，然后应答
+	//自定义的协议。对于请求报文，目标id与本网络接口id一直，将发送方和接收方对换位置，然后应答
 	//对于应答报文，对比接收方MAC与本机MAC，将发送方MAC加入
-	//如果模板地址是广播地址，也作为与本机匹配
 	if( hdr->proto == PP_HTONS(ETHTYPE_CHITIC))
 	{
 		chitic_hdr = (struct chitic_etharp_hdr *)((u8_t*)ethhdr + SIZEOF_ETH_HDR);
 		switch (chitic_hdr->opcode)
 		{
 			case PP_HTONS(ARP_REQUEST):
-				if( ( macCompAddr( &chitic_hdr->dhwaddr, netif->hwaddr) == 0) || \
-					( macCompAddr( &chitic_hdr->dhwaddr, &ethbroadcast) == 0))
+				if( chitic_hdr->d_id == netif->myid)
 				{
 					struct pbuf *reply_pbuf = (struct pbuf *)netif->reply_pbuf;
-//					struct pbuf * reply_pbuf = pbuf_alloc( PBUF_RAW,netif->mtu, PBUF_POOL);
 					if( reply_pbuf == NULL)
 					{
-						printf("reply_pbuf no buf: %s,%s,%d \n", __FILE__, __func__, __LINE__);
-						break;
-//						reply_pbuf = pbuf_alloc( PBUF_RAW,netif->mtu, PBUF_POOL);
-//						netif->reply_pbuf = reply_pbuf;
+//						printf("reply_pbuf no buf: %s,%s,%d \n", __FILE__, __func__, __LINE__);
+//						break;
+						reply_pbuf = pbuf_alloc( PBUF_RAW,netif->mtu, PBUF_TX_POOL);
+						netif->reply_pbuf = reply_pbuf;
 
 					}
 					//引用计算加1，防止在发送后，被释放掉。
 					reply_pbuf->ref ++;
 					reply_pbuf->len = p->len;
+
+					//交换目标地址和源地址
 					ETHADDR16_COPY(&chitic_hdr->dhwaddr, &chitic_hdr->shwaddr);
 					ETHADDR16_COPY(&chitic_hdr->shwaddr, netif->hwaddr);
-					chitic_hdr->opcode = htons(ARP_REPLY);
+					chitic_hdr->d_id = chitic_hdr->s_id;
+					chitic_hdr->s_id = netif->myid;
 
+					chitic_hdr->opcode = htons(ARP_REPLY);
 					memcpy( reply_pbuf->payload, p->payload, p->len);
 					/* return ARP reply */
-					netif->linkoutput(netif, reply_pbuf);
+					if( netif->linkoutput(netif, reply_pbuf))
+						reply_pbuf->ref --;
+
+					p->flags = PBUFFLAG_TRASH;
 				}
 				break;
 			case PP_HTONS(ARP_REPLY):
-				if( macCompAddr( &chitic_hdr->dhwaddr, netif->hwaddr) == 0)
+				if( chitic_hdr->d_id == netif->myid)
 				{
 					int i = 0;
-					for( i = 0 ; i < CONNECT_INFO_NUM; i++)
+					for( i = 0 ; i < ARP_CACHE_NUM; i++)
 					{
-						if( Eth_Cnnect_info[i].status == CON_STATUS_PENDING)
+						if( Eth_Cnnect_info[i].netid == chitic_hdr->s_id)
 						{
-//							if( macCompAddr( Eth_Cnnect_info[i].target_hwaddr, &chitic_hdr->shwaddr) == 0)
-							if( ( macCompAddr( (void *)Eth_Cnnect_info[i].target_hwaddr, &chitic_hdr->shwaddr) == 0) || \
-								( macCompAddr( (void *)Eth_Cnnect_info[i].target_hwaddr, &ethbroadcast)== 0) )
-							{
-								ETHADDR16_COPY( Eth_Cnnect_info[i].target_hwaddr, &chitic_hdr->shwaddr);
-								Eth_Cnnect_info[i].status = CON_STATUS_ESTABLISH;
-								break;
-							}
+							ETHADDR16_COPY( Eth_Cnnect_info[i].target_hwaddr, &chitic_hdr->shwaddr);
+							Eth_Cnnect_info[i].status = CON_STATUS_ESTABLISH;
+							break;
+
 						}
 					}
 				}
-
+				p->flags = PBUFFLAG_TRASH;
 				break;
 			 default:
 			    LWIP_DEBUGF(ETHARP_DEBUG | LWIP_DBG_TRACE, ("etharp_arp_input: ARP unknown opcode type %"S16_F"\n", htons(hdr->opcode)));
@@ -150,7 +150,7 @@ etharp_arp_input(struct netif *netif, struct eth_addr *ethaddr, struct pbuf *p)
 }
 
 err_t
-chitic_arp_output(struct netif *netif, struct pbuf *q, struct eth_addr *target_hwaddr)
+chitic_arp_output(struct netif *netif, struct pbuf *q, connect_info *cnnt_info)
 {
   struct chitic_etharp_hdr *chitic_hdr;
   struct eth_hdr *ethhdr ;
@@ -167,12 +167,13 @@ chitic_arp_output(struct netif *netif, struct pbuf *q, struct eth_addr *target_h
   chitic_hdr->hwtype = htons(HWTYPE_ETHERNET);
   chitic_hdr->proto = htons(ETHTYPE_CHITIC);
   chitic_hdr->hwlen = ETHARP_HWADDR_LEN;
-  chitic_hdr->protolen = 0;
+  chitic_hdr->protolen = 2;
   chitic_hdr->opcode = htons(ARP_REQUEST);
   ETHADDR16_COPY(&chitic_hdr->shwaddr, netif->hwaddr);
-  ETHADDR16_COPY(&chitic_hdr->dhwaddr, target_hwaddr);
-
-  q->len = 34;
+  chitic_hdr->s_id = netif->myid;
+  ETHADDR16_COPY(&chitic_hdr->dhwaddr, &ethzero);
+  chitic_hdr->d_id = cnnt_info->netid;
+  q->len = sizeof( *ethhdr)  + sizeof( *chitic_hdr);
   /* continuation for multicast/broadcast destinations */
   /* obtain source Ethernet address of the given interface */
   /* send packet directly on the link */
@@ -215,32 +216,14 @@ err_t ethernet_input(struct pbuf *p, struct netif *netif)
 	  switch( type)
 	  {
 		case PP_HTONS(ETHTYPE_ARP):
-			if (!(netif->flags & NETIF_FLAG_ETHARP)) {
-			  goto free_and_return;
-			}
+
 			/* pass p to ARP module */
 			etharp_arp_input(netif, (struct eth_addr*)(netif->hwaddr), p);
 			break;
 		case PP_HTONS(ETHTYPE_CHITIC):
 			if( netif->input)
 			{
-
-
-
-				while(p)
-				{
-					if( p->flags)	//结束标志
-					{
-						p->flags = 0;
-						break;
-					}
-					netif->input( p, netif);
-
-
-					p = p->next;
-
-				}
-
+				netif->input( p, netif);
 			}
 			break;
 	  }

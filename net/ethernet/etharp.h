@@ -64,12 +64,14 @@ struct chitic_etharp_hdr {
   u8_t  protolen;
   u16_t opcode;
   struct eth_addr shwaddr;
+  u16_t s_id;
   struct eth_addr dhwaddr;
+  u16_t d_id;
 } ;
 
 
 
 err_t ethernet_input(struct pbuf *p, struct netif *netif);
 err_t
-chitic_arp_output(struct netif *netif, struct pbuf *q, struct eth_addr *target_hwaddr);
+chitic_arp_output(struct netif *netif, struct pbuf *q,  connect_info *cnnt_info);
 #endif /* ETHARP_H_ */

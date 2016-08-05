@@ -16,8 +16,9 @@
 #include "netif.h"
 #include "MinuteHourCount.h"
 #include "crc16.h"
+#include "ChiticDsNet.h"
 
-
+#define BILLION  1000000000L;
 struct test_data {
 	uint32_t   	mark;
 	uint32_t	seq;
@@ -37,7 +38,9 @@ static int set_nonblock_flag( int desc, int value);
 static void netif_link_chg(struct netif *netif);
 err_t input_fn(struct pbuf *p, struct netif *inp);
 static void *net_test_thread(void *arg);
+static void *CDS_recv_thread(void *arg);
 
+static void	linkstate_change_callback( NetAppObj *obj);
 static NetInterface	*Inet[2];
 static bool	Running = true;
 static short		Send_instace = 0;
@@ -47,19 +50,28 @@ static int Net_connect_handle[2] = {-1, -1};
 static uint32_t	Recv_count[2];
 Sys_deginfo		Dubug_info;
 
+static uint8_t		*Send_buf, *Recv_buf;
+static sem_t		sme_linkup[2];
 
 struct netif	*NetIf[2];
 
-
+#define	SEND_AT_ONCE		1					///< 两路网络同时发送
+#define SEND_MUTUALLY		2					///< 两路网络交替发送
+#define NET_SEND_TYPE		SEND_MUTUALLY		///< 两路网络的发送方式
+NetAppObj	*CDS_Net[2];
+static int 		Ds_Hdl[2];
+static uint8_t		DS_SendData = 0;
+uint16_t	mtu;
 int main(int argc, char *argv[])
 {
 
-	uint32_t i = 0, count = 0;
+	uint64_t i = 0, count = 0;
 	uint32_t *p_u32;
 	char opt;
 	uint8_t 	instance;
 	err_t ret = 0;
 	struct pbuf *p_txbuf;
+
 	if(ThreadCtl(_NTO_TCTL_IO, 0) != EOK)
 	{
 		printf("You must be root.");
@@ -69,6 +81,8 @@ int main(int argc, char *argv[])
 	signal(SIGCHLD,SIG_IGN);
 	signal(SIGUSR1,MyHandler);
 	signal(SIGTERM,MyHandler);
+
+#if NET_SEND_TYPE == SEND_AT_ONCE
 	printf(" enter instance 1/2 or 3 for both \r\n");
 	instance = getchar() - '0' ;
 	assert( instance < 4);
@@ -112,34 +126,10 @@ int main(int argc, char *argv[])
 		}
 		show_debug_info(&Dubug_info);
 		count ++;
-//		if( count %40 == 0)
-		{
-			printf(" run %04x ... \n", count );
-		}
+
+		printf(" run %04x ... \n", count );
 		sleep(1);
-//		delay(100);
-//		if( Link_up[0] == 0)
-//			continue;
-//
-//		if( Net_connect_handle[0] < 0)
-//		{
-//			Net_connect_handle[0] = netif_connect( NetIf[0], (u8_t *)&ethbroadcast);
-//			continue;
-//		}
-//		if( count %40 == 0)
-//		{
-//			p_txbuf = pbuf_alloc( PBUF_LINK, 1200, PBUF_POOL);
-//
-//			if( p_txbuf)
-//			{
-//				p_u32 = ( uint32_t *)p_txbuf->payload;
-//				*p_u32 = count;
-//				p_txbuf->len = 4;
-//				if( NetIf[0]->upperlayer_output( NetIf[0], p_txbuf, Net_connect_handle[0]) != ERR_OK)
-//					pbuf_free( p_txbuf);
-//			}
-//
-//		}
+
 	}
 
 	for( i = 0; i < 2; i++)
@@ -154,6 +144,159 @@ int main(int argc, char *argv[])
 		}
 	}
 
+#elif NET_SEND_TYPE == SEND_MUTUALLY
+
+
+
+		uint16_t	fromid;
+
+		uint8_t		other;
+		uint8_t		*mac;
+		char		name[8] = "eth";
+		pid_t ds_rxid ;
+		uint64_t	send_count[2] = {0};
+		uint64_t	send_fail[2] = {0};
+
+		struct timespec start_tm, now_tm;
+		double accum = 0.0;
+
+
+		sem_init( &sme_linkup[0], 0, 0);
+		sem_init( &sme_linkup[1], 0, 0);
+
+		///< 创建并初始化网络协议栈
+		CDS_Net[0] = NetAppObj_new();
+		CDS_Net[0]->netaddr = 0;
+		CDS_Net[0]->num = 0;
+		sprintf(name,"eth0");
+		CDS_Net[0]->set_name( CDS_Net[0], name);
+		CDS_Net[0]->linkstate_change_callback =  linkstate_change_callback;
+		if( CDS_Net[0]->init(CDS_Net[0]))
+			goto err_out_1;
+		mac = CDS_Net[0]->get_mac(CDS_Net[0]);
+		printf("%s mac :%02x:%02x:%02x:%02x:%02x:%02x  \r\n",CDS_Net[0]->get_name(CDS_Net[0]),
+			mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+
+		CDS_Net[1] = NetAppObj_new();
+		CDS_Net[1]->netaddr = 1;
+		CDS_Net[1]->num = 1;
+		sprintf(name,"eth1");
+		CDS_Net[1]->linkstate_change_callback =  linkstate_change_callback;
+		CDS_Net[1]->set_name( CDS_Net[1], name);
+		if( CDS_Net[1]->init(CDS_Net[1]))
+		{
+			goto err_out_2;
+		}
+		mac = CDS_Net[1]->get_mac(CDS_Net[1]);
+		printf("%s mac :%02x:%02x:%02x:%02x:%02x:%02x  \r\n",CDS_Net[0]->get_name(CDS_Net[0]),
+			mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+
+
+		///< 分配发送和接受内存
+		mtu = CDS_Net[0]->get_mtu( CDS_Net[0]);
+		Send_buf = malloc(USER_DATA_MAX(mtu));
+		if( Send_buf == NULL)
+			goto err_out_3;
+		Recv_buf = malloc(USER_DATA_MAX(mtu));
+		if( Recv_buf == NULL)
+			goto err_out_4;
+
+		///< 与对方建立连接
+
+		sem_wait(  &sme_linkup[0]);
+		ret = DS_Connect( CDS_Net[0], 1);
+//		while( ret  == ERR_UNKOWN)
+//		while( ret < 0)
+		while( ret  == ERR_UNKOWN)
+		{
+			ret = DS_Connect( CDS_Net[0], 1);
+		}
+		if( ret == ERR_TIMEOUT)
+		{
+			///< 超时错误处理
+		}
+		if( ret >= 0)
+			Ds_Hdl[0] = ret;
+
+		sem_wait(  &sme_linkup[1]);
+		ret = DS_Connect( CDS_Net[1], 0);
+		//		while( ret  == ERR_UNKOWN)
+		while( ret < 0)
+		{
+			ret = DS_Connect( CDS_Net[1], 0);
+		}
+		if( ret == ERR_TIMEOUT)
+		{
+			///< 超时错误处理
+		}
+		if( ret >= 0)
+			Ds_Hdl[1] = ret;
+
+		memset( Send_buf, 0, USER_DATA_MAX(mtu));
+		while( clock_gettime( CLOCK_REALTIME, &start_tm) == -1 )
+			  perror( "clock gettime" );
+
+
+		pthread_create ( &ds_rxid, NULL, CDS_recv_thread,NULL);
+
+		set_nonblock_flag( 0, 1);
+		for( i = 0; ; i++)
+		{
+			opt = getchar();
+			if( opt == 'q')
+			{
+
+
+				break;
+			}
+			ret = DSSendTo( Ds_Hdl[ i&1], Send_buf, USER_DATA_MAX(mtu));
+			if( ret == ERR_UNAVAILABLE)
+			{
+				delay(1);
+				send_fail[  i&1] ++;
+				continue;
+			}
+			send_count[ i&1] ++;
+
+			if( i % 1000 == 0)
+			{
+				clock_gettime( CLOCK_REALTIME, &now_tm);
+				accum = ( now_tm.tv_sec - start_tm.tv_sec )
+						 + (double)( now_tm.tv_nsec - now_tm.tv_nsec )
+						   / (double)BILLION;
+				printf("[%lf]min , send_count: %lld - %lld,send fail count: %lld - %lld \n", \
+						accum/60, send_count[0], send_count[1], \
+						send_fail[0], send_fail[1]);
+
+
+			}
+			memset( Send_buf, DS_SendData, USER_DATA_MAX(mtu));
+
+		}
+
+
+
+
+		pthread_cancel( ds_rxid);
+		pthread_join( ds_rxid, NULL);
+
+		err_out_5:
+			free(Recv_buf);
+		err_out_4:
+			free(Send_buf);
+		err_out_3:
+			CDS_Net[1]->destroy( CDS_Net[1]);
+		err_out_2:
+			CDS_Net[0]->destroy( CDS_Net[0]);
+		err_out_1:
+			printf(" err exit !\n");
+			return EXIT_FAILURE;
+
+
+
+
+
+#endif
 
 
 	printf(" program exit ! \n");
@@ -173,7 +316,82 @@ static void cleanup(void *arg)
 //	printf(" test thread exit , run %d \n", *run);
 
 }
-#define BILLION  1000000000L;
+
+
+static void *CDS_recv_thread(void *arg)
+{
+	int ret = 0;
+	uint32_t	recv_count[2] = {0};
+	uint32_t	rx_err_count= 0;
+	MinuteHourCount *rx_mh_count[2] ;
+	double		accum = 0.0;
+	uint32_t sec = 0;
+	uint16_t	fromid;
+	uint16_t    other;
+	rx_mh_count[0] = MinuteHourCount_new();
+	rx_mh_count[1] = MinuteHourCount_new();
+	assert( rx_mh_count[0] != NULL);
+	assert( rx_mh_count[1] != NULL);
+
+	rx_mh_count[0]->init( rx_mh_count[0]);
+	rx_mh_count[1]->init( rx_mh_count[1]);
+
+	struct timespec start_tm, stop_tm;
+	while( clock_gettime( CLOCK_REALTIME, &start_tm) == -1 )
+		  perror( "clock gettime" );
+	while(1)
+	{
+		ret = DSRecvFrom( Ds_Hdl[ 0] | Ds_Hdl[ 1], Recv_buf, USER_DATA_MAX(mtu), &fromid);
+		if( ret == USER_DATA_MAX(mtu))
+		{
+//				printf("[%d] %s recv %d data, vale is %d \n",i, CDS_Net[ other]->get_name(CDS_Net[ other]), \
+//						ret, Recv_buf[0]);
+			if( fromid == CDS_Net[0]->netaddr)
+			{
+				other = 1;
+				recv_count[other] ++;
+				DS_SendData = Recv_buf[0] + 1;
+			}
+			else if( fromid == CDS_Net[1]->netaddr)
+			{
+				other = 0;
+				recv_count[other] ++;
+				DS_SendData = Recv_buf[0] + 1;
+			}
+
+		}
+		else
+		{
+			rx_err_count ++;
+		}
+
+		clock_gettime( CLOCK_REALTIME, &stop_tm);
+		accum = ( stop_tm.tv_sec - start_tm.tv_sec )
+				 + (double)( stop_tm.tv_nsec - start_tm.tv_nsec )
+				   / (double)BILLION;
+
+		if( accum > 0.999999)
+		{
+			rx_mh_count[0]->Add( rx_mh_count[0], recv_count[0] * USER_DATA_MAX(mtu));
+			rx_mh_count[1]->Add( rx_mh_count[1], recv_count[1] * USER_DATA_MAX(mtu));
+			recv_count[0] = 0;
+			recv_count[1] = 0;
+			clock_gettime( CLOCK_REALTIME, &start_tm);
+			sec ++;
+			accum = 0;
+			if( sec % 10 == 0)
+			{	printf("[%d]s rx err count :d \n", rx_err_count);
+				printf("recv 0:1 - %fkB --- %fkB;  %fkB --- %fkB\n",
+						rx_mh_count[0]->Minute_Count( rx_mh_count[0])/1024.0, rx_mh_count[0]->Hour_Count( rx_mh_count[0])/1024.0, \
+						rx_mh_count[1]->Minute_Count( rx_mh_count[1])/1024.0, rx_mh_count[1]->Hour_Count( rx_mh_count[1])/1024.0);
+
+			}
+		}
+	}
+
+	return  NULL;
+}
+
 #define	TX_DATA_LEN	1500
 
 static void *net_test_thread(void *arg)
@@ -225,7 +443,7 @@ static void *net_test_thread(void *arg)
 	{
 		while( Net_connect_handle[instance] < 0)
 		{
-			Net_connect_handle[instance] = netif_connect( p_netif, (u8_t *)&ethbroadcast);
+			Net_connect_handle[instance] = netif_connect( p_netif, instance);
 		}
 
 		printf(" Net_connect_handle[%d] = %d \n", instance, Net_connect_handle[instance]);
@@ -274,7 +492,7 @@ static void *net_test_thread(void *arg)
 
 		if( Send_instace &( 1 << instance ))
 		{
-			p_txbuf = pbuf_alloc( PBUF_LINK, TX_DATA_LEN, PBUF_POOL);
+			p_txbuf = pbuf_alloc( PBUF_LINK, TX_DATA_LEN, PBUF_TX_POOL);
 			if( p_txbuf != NULL)
 			{
 				if( p_txbuf->ref == 0)
@@ -482,31 +700,31 @@ static void show_debug_info( Sys_deginfo *info)
 //
 //	}
 
-//	if( Dubug_info.send_count[0] != old_ifo.send_count[0]\
-//			|| Dubug_info.send_count[1] != old_ifo.send_count[1] )
-//	{
-//		old_ifo.send_count[0] = Dubug_info.send_count[0];
-//		old_ifo.send_count[1] = Dubug_info.send_count[1];
-//		printf("send_count count :");
-//		printf( "%d , %d \n", Dubug_info.send_count[0], Dubug_info.send_count[1]);
-//	}
-	if( Dubug_info.send_busy_count[0] != old_ifo.send_busy_count[0]\
-			|| Dubug_info.send_busy_count[1] != old_ifo.send_busy_count[1] )
+	if( Dubug_info.send_count[0] != old_ifo.send_count[0]\
+			|| Dubug_info.send_count[1] != old_ifo.send_count[1] )
 	{
-		old_ifo.send_busy_count[0] = Dubug_info.send_busy_count[0];
-		old_ifo.send_busy_count[1] = Dubug_info.send_busy_count[1];
-		printf("send_busy_count count :");
-		printf( "%d , %d \n", Dubug_info.send_busy_count[0], Dubug_info.send_busy_count[1]);
+		old_ifo.send_count[0] = Dubug_info.send_count[0];
+		old_ifo.send_count[1] = Dubug_info.send_count[1];
+		printf("send_count count :");
+		printf( "%d , %d \n", Dubug_info.send_count[0], Dubug_info.send_count[1]);
 	}
-
-//	if( Dubug_info.recv_count[0] != old_ifo.recv_count[0]\
-//			|| Dubug_info.recv_count[1] != old_ifo.recv_count[1] )
+//	if( Dubug_info.send_busy_count[0] != old_ifo.send_busy_count[0]\
+//			|| Dubug_info.send_busy_count[1] != old_ifo.send_busy_count[1] )
 //	{
-//		old_ifo.recv_count[0] = Dubug_info.recv_count[0];
-//		old_ifo.recv_count[1] = Dubug_info.recv_count[1];
-//		printf("recv_count count :");
-//		printf( "%d , %d \n", Dubug_info.recv_count[0], Dubug_info.recv_count[1]);
+//		old_ifo.send_busy_count[0] = Dubug_info.send_busy_count[0];
+//		old_ifo.send_busy_count[1] = Dubug_info.send_busy_count[1];
+//		printf("send_busy_count count :");
+//		printf( "%d , %d \n", Dubug_info.send_busy_count[0], Dubug_info.send_busy_count[1]);
 //	}
+
+	if( Dubug_info.recv_count[0] != old_ifo.recv_count[0]\
+			|| Dubug_info.recv_count[1] != old_ifo.recv_count[1] )
+	{
+		old_ifo.recv_count[0] = Dubug_info.recv_count[0];
+		old_ifo.recv_count[1] = Dubug_info.recv_count[1];
+		printf("recv_count count :");
+		printf( "%d , %d \n", Dubug_info.recv_count[0], Dubug_info.recv_count[1]);
+	}
 //	else
 //	{
 //		for( i = 0 ; i < 2; i++)
@@ -552,5 +770,10 @@ static void show_debug_info( Sys_deginfo *info)
 }
 
 
-
+static void	linkstate_change_callback( NetAppObj *obj)
+{
+//	printf(" linkstate_change_callback \n");
+	if( obj->get_linkstate( obj))
+		sem_post(  &sme_linkup[ obj->num]);
+}
 

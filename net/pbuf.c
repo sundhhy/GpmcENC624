@@ -122,6 +122,7 @@ struct pbuf *
 pbuf_alloc(pbuf_layer layer, u16_t length, pbuf_type type)
 {
   struct pbuf *p, *q, *r;
+  memp_t	memp_type;
   u16_t offset;
   s32_t rem_len; /* remaining length */
 //  TRACE_DEBUG("pbuf_alloc(length=%d)\n", length);
@@ -141,90 +142,93 @@ pbuf_alloc(pbuf_layer layer, u16_t length, pbuf_type type)
     goto return_null;
   }
 
-  switch (type) {
-  case PBUF_POOL:
-    /* allocate head of pbuf chain into p */
-    p = (struct pbuf *)memp_malloc(MEMP_PBUF_POOL);
-//    TRACE_DEBUG( "pbuf_alloc: allocated pbuf %p\n", (void *)p);
-    if (p == NULL) {
-      PBUF_POOL_IS_EMPTY();
-      goto return_null;
-    }
-    p->type = type;
-    p->next = NULL;
+	switch (type) {
+		case PBUF_TX_POOL:
 
-    /* make the payload pointer point 'offset' bytes into pbuf data memory */
-    p->payload = LWIP_MEM_ALIGN((void *)((u8_t *)p + (SIZEOF_STRUCT_PBUF + offset)));
-//    p->payload = ((void *)((u8_t *)p + (SIZEOF_STRUCT_PBUF + offset)));
-    LWIP_ASSERT("pbuf_alloc: pbuf p->payload properly aligned",
-            ((mem_ptr_t)p->payload % MEM_ALIGNMENT) == 0);
-    /* the total length of the pbuf chain is the requested size */
-    p->tot_len = length;
-    /* set the length of the first pbuf in the chain */
-    p->len = LWIP_MIN(length, PBUF_POOL_BUFSIZE_ALIGNED - LWIP_MEM_ALIGN_SIZE(offset));
-    LWIP_ASSERT("check p->payload + p->len does not overflow pbuf",
-                ((u8_t*)p->payload + p->len <=
-                 (u8_t*)p + SIZEOF_STRUCT_PBUF + PBUF_POOL_BUFSIZE_ALIGNED));
-    LWIP_ASSERT("PBUF_POOL_BUFSIZE must be bigger than MEM_ALIGNMENT",
-      (PBUF_POOL_BUFSIZE_ALIGNED - LWIP_MEM_ALIGN_SIZE(offset)) > 0 );
-    /* set reference count (needed here in case we fail) */
-    p->ref = 1;
-    memset( p->payload , 0, p->len);
-    /* now allocate the tail of the pbuf chain */
+			memp_type = MEMP_PBUF_TX_POOL;
+			break;
+		case PBUF_RX_POOL:
+			/* allocate head of pbuf chain into p */
+			memp_type = MEMP_PBUF_RX_POOL;
+			break;
+		default:
+			LWIP_ASSERT("pbuf_alloc: erroneous type", 0);
+			goto return_null;
+	}
+	p = (struct pbuf *)memp_malloc(memp_type);
+	//    TRACE_DEBUG( "pbuf_alloc: allocated pbuf %p\n", (void *)p);
+	if (p == NULL) {
+		PBUF_POOL_IS_EMPTY();
+		goto return_null;
+	}
+	p->type = type;
+	p->next = NULL;
 
-    /* remember first pbuf for linkage in next iteration */
-    r = p;
-    /* remaining length to be allocated */
-    rem_len = length - p->len;
-    /* any remaining pbufs to be allocated? */
-    while (rem_len > 0) {
-      q = (struct pbuf *)memp_malloc(MEMP_PBUF_POOL);
-      if (q == NULL) {
-        PBUF_POOL_IS_EMPTY();
-        /* free chain so far allocated */
-        pbuf_free(p);
-        /* bail out unsuccesfully */
-        goto return_null;
-      }
-      q->type = type;
-      q->flags = 0;
-      q->next = NULL;
-      /* make previous pbuf point to this pbuf */
-      r->next = q;
-      /* set total length of this pbuf and next in chain */
-      LWIP_ASSERT("rem_len < max_u16_t", rem_len < 0xffff);
-      q->tot_len = (u16_t)rem_len;
-      /* this pbuf length is pool size, unless smaller sized tail */
-      q->len = LWIP_MIN((u16_t)rem_len, PBUF_POOL_BUFSIZE_ALIGNED);
-      q->payload = (void *)((u8_t *)q + SIZEOF_STRUCT_PBUF);
-      LWIP_ASSERT("pbuf_alloc: pbuf q->payload properly aligned",
-              ((mem_ptr_t)q->payload % MEM_ALIGNMENT) == 0);
-      LWIP_ASSERT("check p->payload + p->len does not overflow pbuf",
-                  ((u8_t*)p->payload + p->len <=
-                   (u8_t*)p + SIZEOF_STRUCT_PBUF + PBUF_POOL_BUFSIZE_ALIGNED));
-      memset( q->payload , 0, q->len);
-      q->ref = 1;
-      /* calculate remaining length to be allocated */
-      rem_len -= q->len;
-      /* remember this pbuf for linkage in next iteration */
-      r = q;
-    }
-    /* end of chain */
-    /*r->next = NULL;*/
+	/* make the payload pointer point 'offset' bytes into pbuf data memory */
+	p->payload = LWIP_MEM_ALIGN((void *)((u8_t *)p + (SIZEOF_STRUCT_PBUF + offset)));
+	//    p->payload = ((void *)((u8_t *)p + (SIZEOF_STRUCT_PBUF + offset)));
+	LWIP_ASSERT("pbuf_alloc: pbuf p->payload properly aligned",
+		((mem_ptr_t)p->payload % MEM_ALIGNMENT) == 0);
+	/* the total length of the pbuf chain is the requested size */
+	p->tot_len = length;
+	/* set the length of the first pbuf in the chain */
+	p->len = LWIP_MIN(length, PBUF_POOL_BUFSIZE_ALIGNED - LWIP_MEM_ALIGN_SIZE(offset));
+	LWIP_ASSERT("check p->payload + p->len does not overflow pbuf",
+			((u8_t*)p->payload + p->len <=
+			 (u8_t*)p + SIZEOF_STRUCT_PBUF + PBUF_POOL_BUFSIZE_ALIGNED));
+	LWIP_ASSERT("PBUF_POOL_BUFSIZE must be bigger than MEM_ALIGNMENT",
+	(PBUF_POOL_BUFSIZE_ALIGNED - LWIP_MEM_ALIGN_SIZE(offset)) > 0 );
+	/* set reference count (needed here in case we fail) */
+	p->ref = 1;
+	memset( p->payload , 0, p->len);
+	/* now allocate the tail of the pbuf chain */
 
-    break;
-
-  default:
-    LWIP_ASSERT("pbuf_alloc: erroneous type", 0);
-    goto return_null;
-  }
-  /* set reference count */
-  p->ref = 1;
-  /* set flags */
-  p->flags = 0;
-  TRACE_DEBUG("pbuf_alloc(length=%u) == %p\n", length, (void *)p);
-  SYS_ARCH_UNPROTECT(Mem_Pbuf_mutex);
-  return p;
+	/* remember first pbuf for linkage in next iteration */
+	r = p;
+	/* remaining length to be allocated */
+	rem_len = length - p->len;
+	/* any remaining pbufs to be allocated? */
+	while (rem_len > 0) {
+		q = (struct pbuf *)memp_malloc(memp_type);
+		if (q == NULL) {
+			PBUF_POOL_IS_EMPTY();
+			/* free chain so far allocated */
+			pbuf_free(p);
+			/* bail out unsuccesfully */
+			goto return_null;
+		}
+		q->type = type;
+		q->flags = 0;
+		q->next = NULL;
+		/* make previous pbuf point to this pbuf */
+		r->next = q;
+		/* set total length of this pbuf and next in chain */
+		LWIP_ASSERT("rem_len < max_u16_t", rem_len < 0xffff);
+		q->tot_len = (u16_t)rem_len;
+		/* this pbuf length is pool size, unless smaller sized tail */
+		q->len = LWIP_MIN((u16_t)rem_len, PBUF_POOL_BUFSIZE_ALIGNED);
+		q->payload = (void *)((u8_t *)q + SIZEOF_STRUCT_PBUF);
+		LWIP_ASSERT("pbuf_alloc: pbuf q->payload properly aligned",
+			  ((mem_ptr_t)q->payload % MEM_ALIGNMENT) == 0);
+		LWIP_ASSERT("check p->payload + p->len does not overflow pbuf",
+				  ((u8_t*)p->payload + p->len <=
+				   (u8_t*)p + SIZEOF_STRUCT_PBUF + PBUF_POOL_BUFSIZE_ALIGNED));
+		memset( q->payload , 0, q->len);
+		q->ref = 1;
+		/* calculate remaining length to be allocated */
+		rem_len -= q->len;
+		/* remember this pbuf for linkage in next iteration */
+		r = q;
+	}
+	/* end of chain */
+	/*r->next = NULL;*/
+	/* set reference count */
+	p->ref = 1;
+	/* set flags */
+	p->flags = 0;
+	TRACE_DEBUG("pbuf_alloc(length=%u) == %p\n", length, (void *)p);
+	SYS_ARCH_UNPROTECT(Mem_Pbuf_mutex);
+	return p;
 
 return_null:
 	SYS_ARCH_UNPROTECT(Mem_Pbuf_mutex);
@@ -278,7 +282,7 @@ pbuf_header(struct pbuf *p, s16_t header_size_increment)
   payload = p->payload;
 
   /* pbuf types containing payloads? */
-  if (type == PBUF_RAM || type == PBUF_POOL) {
+  if (type == PBUF_RAM || type == PBUF_TX_POOL || type == PBUF_RX_POOL) {
     /* set new payload pointer */
     p->payload = (u8_t *)p->payload - header_size_increment;
     /* boundary check fails? */
@@ -367,7 +371,7 @@ pbuf_free(struct pbuf *p)
 
   LWIP_ASSERT("pbuf_free: sane type",
     p->type == PBUF_RAM || p->type == PBUF_ROM ||
-    p->type == PBUF_REF || p->type == PBUF_POOL);
+    p->type == PBUF_REF ||  p->type == PBUF_TX_POOL ||  p->type == PBUF_RX_POOL);
 
   count = 0;
   /* de-allocate all consecutive pbufs from the head of the chain that
@@ -401,17 +405,14 @@ pbuf_free(struct pbuf *p)
       type = p->type;
       {
         /* is this a pbuf from the pool? */
-        if (type == PBUF_POOL) {
-          memp_free(MEMP_PBUF_POOL, p);
+        if (type == PBUF_TX_POOL) {
+          memp_free(MEMP_PBUF_TX_POOL, p);
         /* is this a ROM or RAM referencing pbuf? */
         }
-//        else if (type == PBUF_ROM || type == PBUF_REF) {
-//          memp_free(MEMP_PBUF, p);
-//        /* type == PBUF_RAM */
-//        }
-//        else {
-//          mem_free(p);
-//        }
+        else if (type == PBUF_RX_POOL) {
+        	memp_free(MEMP_PBUF_RX_POOL, p);
+        }
+
       }
       count++;
       /* proceed to next pbuf */

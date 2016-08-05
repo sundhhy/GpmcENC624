@@ -114,7 +114,7 @@ memp_init(void)
 #endif
       );
     }
-    printf(" %p] \n", memp_tab[i]);
+//    printf(" %p] \n", memp_tab[i]);
   }
 
 

@@ -23,7 +23,9 @@
 #define RX_EVENT	1
 #define TX_EVENT	2
 
-
+#define	PBUFFLAG_TRASH		0		///< 已经处理完成，无用的数据
+#define	PBUFFLAG_UNPROCESS	1		///< 未处理的数据
+#define	PBUFFLAG_DEALING	2		///< 正在处理队列中的数据
 
 #define		ISR_TX_EVENT 		( 1 << 0)
 #define		ISR_RX_EVENT 		( 1 << 1)
@@ -55,7 +57,7 @@ typedef struct
 
 typedef struct
 {
-	char					name[32];
+	char					*name;
 
 	uint8_t					*ethFrame;
 	void 					*nicContext;
@@ -63,15 +65,15 @@ typedef struct
 	unsigned int			macFilterSize;
 	MacAddr_u16					*macFilter;
 
-	MacAddr_u16				macAddr;
+	MacAddr_u16				*macAddr;
 
 	Drive_Gpmc				*busDriver;
 	Drive_Gpio				*extIntDriver;
 
-	int					speed100;
-	int					fullDuplex;
-	int					linkState;
-	int					instance;
+	bool					speed100;
+	bool					fullDuplex;
+	bool					linkState;
+	uint8_t					instance;
 
 	int 					nicRxEvent;
 	int						nicTxEvent;
@@ -80,7 +82,7 @@ typedef struct
 	pthread_t				send_tid;
 	volatile uint32_t		isr_status;
 	void					*hl_netif;		//上一层的网络接口
-	struct pbuf				*rxpbuf_head;
+	struct pbuf				*rxUnprocessed;		///< 接收但没来得及处理的数据.这个元素只能在程序中一个位置访问。这样来避免上锁操作
 	struct pbuf				*rxpbuf;
 
 

@@ -11,7 +11,7 @@
 #include <stdint.h>
 #include "mem.h"
 
-#define  CONNECT_INFO_NUM		10
+#define  ARP_CACHE_NUM			10
 #define NET_INSTANCE_NUM		2
 
 #ifndef LITTLE_ENDIAN
@@ -98,14 +98,16 @@ typedef u32_t           mem_ptr_t;
 /**
  * PBUF_POOL_SIZE: the number of buffers in the pbuf pool.
  */
-#ifndef PBUF_POOL_SIZE
-#define PBUF_POOL_SIZE                  256
+#ifndef PBUF_TX_POOL_SIZE
+#define PBUF_TX_POOL_SIZE                  256
 #endif
-
+#ifndef PBUF_RX_POOL_SIZE
+#define PBUF_RX_POOL_SIZE                  64
+#endif
 
 
 #define LWIP_NETIF_LOOPBACK				0
 
-#define	PRE_NET_NAME					"eth"
+
 
 #endif /* MEM_CONFIG_H_ */
