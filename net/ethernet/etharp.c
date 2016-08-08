@@ -226,6 +226,9 @@ err_t ethernet_input(struct pbuf *p, struct netif *netif)
 				netif->input( p, netif);
 			}
 			break;
+		default:
+			p->flags = PBUFFLAG_TRASH;
+			break;
 	  }
 
 free_and_return:

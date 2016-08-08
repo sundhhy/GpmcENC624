@@ -387,18 +387,13 @@ recv_exit:
 /**
  * @brief 向指定的句柄发送数据
  *
- * @details 接收时，如果没有数据，将会阻塞调用者。数据到来的时候，要做如下处理：
- * 1 根据handle来判断数据是否是发向本机的。如果不是就丢弃。并继续阻塞。
- * 2 判断协议类型，与‘DS_PRTC_TYPE’不符，丢弃。并继续阻塞。
- * 3 对头部进行校验和计算，如果计算结果不全为1，校验错误，丢弃。并继续阻塞。
- * 4 将数据放入buff，在 len ，（ 头部总长度 - 头部长度）， pbun->len - 头部长度,  这三者之间小的那个作为接收长度。
- * 5 如果fromid指针不为NULL，将源网络地址赋值给它。
+ * @details 发送数据时，先申请pbuf内存。如果申请失败向下层的发送接口发送NULL数据，通知下层驱动进行刷新pbuf内存操作。
+ * 然后延迟1ms后，以ERR_UNAVAILABLE的返回值退出。
  *
  * @param[in]	hd_bitmap 发送的连接.
- * @param[in] 	buff   接受数据缓存区.
- * @param[in]	len		接受数据长度.
- * @param[in]	fromid	数据源地址
- * @retval	接受的数据长度.
+ * @param[in] 	buff   发送数据缓存区.
+ * @param[in]	len		发送数据长度.
+ * @retval	发送的数据长度.
  * @retval	ERR_UNAVAILABLE: 发送失败
  * @attention	当句柄中包含多个连接的时候，只会像找到的第一个发送。剩下的不会去发送。
  * @par 修改日志
