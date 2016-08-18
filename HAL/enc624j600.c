@@ -769,7 +769,6 @@ err_t enc624_PSP_ReceivePacket(NetInterface *interface,
 
 	Enc624j600Context *context;
 	uint16_t			point;
-	uint16_t			econ1;
 	//Point to the driver context
 	context = (Enc624j600Context *) interface->nicContext;
 	point = context->nextPacketPointer;
@@ -835,7 +834,6 @@ err_t enc624_PSP_ReceivePacket(NetInterface *interface,
 
 	  //Set PKTDEC to decrement the PKTCNT bits
 	  SetBit[ I_type](interface, ENC624J600_REG_ECON1, ECON1_PKTDEC);
-	  econ1 = ReadReg[I_type](interface, ENC624J600_REG_ECON1);
 
 	}
 	else

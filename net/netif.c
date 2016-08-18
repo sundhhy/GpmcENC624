@@ -211,39 +211,7 @@ err_t netif_linkoutput(struct netif *netif, struct pbuf *p)
 
 	}
 	ret = insert_node_to_listtail( (void **)&Tx_pbuf[ instance], p);
-	if( ret == ERR_CATASTROPHIC_ERR)
-	{
-		//发送链表出现了致命错误,清空发送链表，并释放内存
-		p_iterator = Tx_pbuf[ instance];
-		while ( p_iterator->next != NULL)
-		{
-			p_free = p_iterator;
-			p_iterator = p_iterator->next;
 
-
-			if( p_free->ref > 0)
-			{
-				pbuf_free(p_free);
-			}
-		}
-	}
-//	//这是第一个要加入发送队列的pbuf
-//
-//	if( Tx_pbuf[ inet->instance] == NULL)
-//	{
-//		Tx_pbuf[ inet->instance] = p;
-//		goto exit_output;
-//	}
-//	//从尾部加入新发送的pbuf
-//	iterator = Tx_pbuf[ inet->instance];
-//	while ( iterator->next != NULL)
-//	{
-//		iterator = iterator->next;
-//	}
-//
-//	// 防止互指
-//	if( iterator != p)
-//		iterator->next = p;
 
 exit_output:
 	pthread_cond_signal( &Send_pbuf_cond[ instance]);
