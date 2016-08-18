@@ -164,16 +164,21 @@ const struct sigevent *gpioExtInteIsr (void *area, int id)
 	Drive_Gpio 		*cthis = ( Drive_Gpio *)area ;
 	uint32_t stats;
 	stats = in32( cthis->gpio_vbase + GPIO_GPIO_IRQSTATUS( cthis->config->intr_line));
-
+	out32( cthis->gpio_vbase + GPIO_GPIO_IRQSTATUS( cthis->config->intr_line), stats);
 	if( stats & ( 1<< cthis->config->pin_number))
 	{
-		out32( cthis->gpio_vbase + GPIO_GPIO_IRQSTATUS( cthis->config->intr_line), 1 << cthis->config->pin_number);
-	}
+//		out32( cthis->gpio_vbase + GPIO_GPIO_IRQSTATUS( cthis->config->intr_line), 1 << cthis->config->pin_number);
+
 #ifndef DEBUG_ONLY_GPIO_INIT
-	cthis->irq_handle( cthis->irq_handle_arg);
+		cthis->irq_handle( cthis->irq_handle_arg);
 #endif
-	Dubug_info.irq_count[ cthis->config->instance] ++;
-    return ( &cthis->isr_event);
+		Dubug_info.irq_count[ cthis->config->instance] ++;
+		return ( &cthis->isr_event);
+	}
+
+
+	return NULL;
+
 }
 
 

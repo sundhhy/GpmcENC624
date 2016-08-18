@@ -277,16 +277,21 @@ int DS_Connect( NetAppObj *dsnet, uint16_t targetid)
  *
  * @param[in]	hd_bitmap 要关闭的连接.
  * @retval	ERR_OK ： 成功.
+ * @retval	ERR_BAD_PARAMETER ： 传入的句柄有误.
  * @par 修改日志
  * 		sundh 于2016-08-03创建
  */
 err_t DS_DisConnect( int hd_bitmap)
 {
 	int  i ;
+	if( hd_bitmap < 0)
+		return ERR_BAD_PARAMETER;
 	for( i = 0; i < DS_HANDLE_NUM; i++)
 	{
 		if( hd_bitmap & ( 1 << i))
 		{
+			if( NetObj[ i] == NULL)
+				continue;
 			netif_disconnect( NoPrvt[ NetObj[ i]->num].netif, ArpCacheIdx[ i] );
 			NetObj[ i] = NULL;
 		}
@@ -417,13 +422,18 @@ int DSSendTo( int hd_bitmap, void *buff, int len)
 	{
 		if( hd_bitmap & ( 1 << i))
 		{
-			handle = i;
-			break;
+
+			if( NetObj[ handle])
+			{
+				handle = i;
+				break;
+			}
 		}
 
 	}
 	if( handle < 0)
 		return ERR_BAD_PARAMETER;
+
 	num = NetObj[ handle]->num;
 	assert( len <=  (  NoPrvt[ NetObj[ handle]->num].netif->mtu - PBUF_LINK_HLEN - 4 - DS_PRTC_HDRLEN));
 
