@@ -19,7 +19,7 @@
 #include <assert.h>
 #include <string.h>
 #include <unistd.h>
-
+#include "debug.h"
 /**
  * chitic 应用层的网络操作对象的私有成员
  *
@@ -311,6 +311,7 @@ err_t DS_DisConnect( int hd_bitmap)
  * @param[in]	fromid	数据源地址
  * @retval	接受的数据长度.
  * @retval	ERR_VAL：错误的数据
+ * @retval	ERR_BAD_PARAMETER：错误的句柄，一般出现在向未建立连接的句柄读取的时候
  * @par 修改日志
  * 		sundh 于2016-08-03创建
  */
@@ -327,6 +328,8 @@ int DSRecvFrom( int hd_bitmap, void *buff, int len, uint16_t *fromid)
 	short	hit = 0;
 	assert( hd_bitmap > 0);
 
+	if( hd_bitmap < 0)
+		return ERR_BAD_PARAMETER;
 	recv_len = -1;
 
 	///< 从处理队列头获取数据
@@ -349,24 +352,26 @@ int DSRecvFrom( int hd_bitmap, void *buff, int len, uint16_t *fromid)
 	ds_hdr->src_addr = PP_NTOHS( ds_hdr->src_addr);
 	ds_hdr->dst_addr = PP_NTOHS( ds_hdr->dst_addr);
 	ds_hdr->total_len = PP_NTOHS( ds_hdr->total_len);
-
 	for( i = 0; i < DS_HANDLE_NUM; i++)
 	{
 		if( hd_bitmap & ( 1 << i))
 		{
 			netobj = NetObj[ i];
-			if( ds_hdr->dst_addr ==  netobj->netaddr )
+			if( netobj)
 			{
-				hit =1;
-				break;
+				if( ds_hdr->dst_addr ==  netobj->netaddr )
+				{
+					hit =1;
+					break;
+				}
 			}
+
 		}
 	}
 	if( hit == 0)
 		goto recv_exit;
-
 	recv_len = ds_hdr->total_len - ds_hdr->head_len;
-	pbuf_left = rx_in_handle->len - PBUF_LINK_HLEN - ds_hdr->head_len;
+	pbuf_left = rx_in_handle->len - PBUF_LINK_HLEN - 4 - ds_hdr->head_len;
 	recv_len = (recv_len < pbuf_left) ? recv_len : pbuf_left;
 	recv_len = (recv_len < len) ? recv_len : len;
 
@@ -376,6 +381,7 @@ int DSRecvFrom( int hd_bitmap, void *buff, int len, uint16_t *fromid)
 
 
 recv_exit:
+	Dubug_info.pbuf_free_local = 1;
 	pbuf_free( rx_in_handle);
 
 
@@ -442,6 +448,7 @@ int DSSendTo( int hd_bitmap, void *buff, int len)
 
 		if( NoPrvt[ NetObj[ handle]->num].netif->upperlayer_output( NoPrvt[ NetObj[ handle]->num].netif, p_txbuf, ArpCacheIdx[handle]) != ERR_OK)
 		{
+			Dubug_info.pbuf_free_local = 2;
 			pbuf_free( p_txbuf);
 			return ERR_UNAVAILABLE;
 		}
@@ -461,38 +468,50 @@ int DSSendTo( int hd_bitmap, void *buff, int len)
 static err_t input_fn(struct pbuf *p, struct netif *inp)
 {
 	NetInterface *inet = ( NetInterface *)inp->ll_netif;
-	struct pbuf *p_deal, *p_iterator;
+	struct pbuf  *p_iterator;
+	err_t ret ;
+
+
 	if( pthread_mutex_trylock( &Recv_mutex) == EOK )
 	{
-		p->flags = PBUFFLAG_DEALING;
-		/* 先把未处理的数据缓存和本次要处理的数据一起放入处理缓存区	*/
-		p_deal = inet->rxUnprocessed;
-		if( p_deal)
+		if( p)
 		{
-			p_deal->flags = PBUFFLAG_DEALING;
-
-			while( p_deal->next != NULL)
+			p->flags = PBUFFLAG_DEALING;
+			/* 未处理链表插入到处理链表	*/
+			if( inet->rxUnprocessed)
 			{
-				p_deal->flags = PBUFFLAG_DEALING;
-				p_deal = p_deal->next;
-			}
-			p_deal->next = p;
-		}
-		else
-			p_deal = p;
+				ret = insert_node_to_listtail( (void **)&RxPrcsHd, inet->rxUnprocessed);
 
-		//接受缓存队列为空。将新数据放在头部
-		if( RxPrcsHd == NULL)
-			RxPrcsHd = p_deal;
-		else
-		{
+				inet->rxUnprocessed = NULL;
+			}
+
+			/* 新的数据插入到处理链表	*/
+			insert_node_to_listtail( (void **)&RxPrcsHd, p);
+
+
+
+			//将pbuf的标志改写为处理中
 			p_iterator = RxPrcsHd;
-			//找到尾节点
 			while( p_iterator->next != NULL)
 			{
+
+				p_iterator->flags = PBUFFLAG_DEALING;
 				p_iterator = p_iterator->next;
 			}
-			p_iterator->next = p_deal;
+
+		}
+		else
+		{
+			//释放缓存
+			if( RxPrcsHd)
+			{
+				p_iterator = RxPrcsHd;
+				RxPrcsHd = RxPrcsHd->next;
+				p_iterator->next = NULL;
+				Dubug_info.pbuf_free_local = 7;
+				pbuf_free(p_iterator);
+			}
+
 		}
 		pthread_cond_signal( &Recv_cond);
 		pthread_mutex_unlock( &Recv_mutex );
@@ -502,16 +521,10 @@ static err_t input_fn(struct pbuf *p, struct netif *inp)
 	{
 		///< 将数据缓存放入待处理队列中.这里不需要上锁
 		///< inet->rxUnprocessed 只能在这里修改
-		if( inet->rxUnprocessed == NULL)
-			inet->rxUnprocessed = p;
-		else
+		if( p)
 		{
-			p_iterator = inet->rxUnprocessed;
-
-			while(p_iterator->next != NULL)
-				p_iterator = p_iterator->next;
-			p_iterator->next = p;
-
+			p->flags = PBUFFLAG_UNPROCESS;
+			insert_node_to_listtail( (void **)&inet->rxUnprocessed, p);
 		}
 
 	}

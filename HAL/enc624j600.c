@@ -442,6 +442,7 @@ void enc624j600DisableIrq(NetInterface *interface)
 bool enc624j600IrqHandler(void *arg)
 {
    bool flag;
+   bool	none_isr = TRUE;
    uint16_t status;
    NetInterface *interface = ( NetInterface *)arg;
    //This flag will be set if a higher priority task must be woken
@@ -460,6 +461,7 @@ bool enc624j600IrqHandler(void *arg)
       ClearBit[ I_type](interface, ENC624J600_REG_EIE, EIE_LINKIE);
       //Notify the user that the link state has changed
       flag |= osSetEventFromIsr(arg, ISR_LINK_STATUS_CHG);
+      none_isr = FALSE;
    }
    //Packet received?
    if(status & ( EIR_PKTIF ))
@@ -469,6 +471,7 @@ bool enc624j600IrqHandler(void *arg)
       ClearBit[ I_type](interface, ENC624J600_REG_EIE, EIE_PKTIE );
       //Notify the user that a packet has been received
       flag |= osSetEventFromIsr(arg, ISR_RECV_PACKET);
+      none_isr = FALSE;
    }
 
    //Packet abort
@@ -480,6 +483,7 @@ bool enc624j600IrqHandler(void *arg)
 		ClearBit[ I_type](interface, ENC624J600_REG_EIE, EIE_RXABTIE);
 		//Notify the user that a packet has been received
 		flag |= osSetEventFromIsr(arg, ISR_RECV_ABORT);
+		none_isr = FALSE;
 	 }
    //Packet transmission complete?
    if(status & (EIR_TXIF | EIR_TXABTIF))
@@ -488,8 +492,11 @@ bool enc624j600IrqHandler(void *arg)
       flag |= osSetEventFromIsr(arg, ISR_TRAN_COMPLETE);
       //Clear interrupt flag
       ClearBit[ I_type](interface, ENC624J600_REG_EIR, EIR_TXIF | EIR_TXABTIF);
+      none_isr = FALSE;
    }
 
+   if( none_isr)
+	   osSetEventFromIsr(arg, ISR_NONE);
    //Once the interrupt has been serviced, the INTIE bit
    //is set again to re-enable interrupts
    SetBit[ I_type](interface, ENC624J600_REG_EIE, EIE_INTIE);
@@ -572,8 +579,8 @@ void enc624j600EventHandler(NetInterface *interface)
 	   //这么处理的原因是，会有这么一种情况，是接收中断在处理中，状态变化状态发生了。但是因为中断处理过程中是不会响应其他中断的.
 	   //这会导致程序数据收到了，但是连接状态还是为未连接。
 	   //这里加入的代码就是为了解决这个问题.
-	   if( !interface->linkState )
-		   interface->linkState = TRUE;
+//	   if( !interface->linkState )
+//		   interface->linkState = TRUE;
 	  //Clear interrupt flag
 	  ClearBit[ I_type](interface, ENC624J600_REG_EIR, EIR_PKTIF );
 
@@ -709,7 +716,7 @@ err_t enc624j600SendPacket(NetInterface *interface,
    if(!interface->linkState)
    {
       //The transmitter can accept another packet
-	   printf("[%s] %s can't send packet, because of linkstate is down \n", interface->name, __func__);
+//	   printf("[%s] %s can't send packet, because of linkstate is down \n", interface->name, __func__);
       osSetEventFromIsr(interface, ISR_TRAN_COMPLETE);
       //Drop current packet
       return ERROR_FAILURE;
@@ -762,7 +769,7 @@ err_t enc624_PSP_ReceivePacket(NetInterface *interface,
 
 	Enc624j600Context *context;
 	uint16_t			point;
-
+	uint16_t			econ1;
 	//Point to the driver context
 	context = (Enc624j600Context *) interface->nicContext;
 	point = context->nextPacketPointer;
@@ -828,6 +835,8 @@ err_t enc624_PSP_ReceivePacket(NetInterface *interface,
 
 	  //Set PKTDEC to decrement the PKTCNT bits
 	  SetBit[ I_type](interface, ENC624J600_REG_ECON1, ECON1_PKTDEC);
+	  econ1 = ReadReg[I_type](interface, ENC624J600_REG_ECON1);
+
 	}
 	else
 	{

@@ -420,7 +420,7 @@ pbuf_free(struct pbuf *p)
     /* p->ref > 0, this pbuf is still referenced to */
     /* (and so the remaining pbufs in chain as well) */
     } else {
-    	TRACE_DEBUG("pbuf_free: %p has ref %u, ending here.\n", (void *)p, ref);
+//    	printf("pbuf_free: %p has ref %u, ending here.\n", (void *)p, ref);
       /* stop walking through the chain */
       p = NULL;
     }

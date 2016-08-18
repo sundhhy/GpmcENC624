@@ -80,7 +80,7 @@ int osSetEventFromIsr(void *net_instance, int event)
 
 
 
-	return EXIT_SUCCESS;
+	return event;
 
 #endif
 }

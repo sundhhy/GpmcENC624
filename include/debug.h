@@ -65,6 +65,8 @@ typedef struct {
 
 
 	uint32_t		enc624_test_thread_run[2];
+
+	uint32_t		pbuf_free_local;
 }Sys_deginfo;
 
 

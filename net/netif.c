@@ -131,6 +131,7 @@ int netif_connect( struct netif * netif, u16_t d_id)
 			ret = chitic_arp_output( netif, p, Eth_Cnnect_info + i);
 			if( ret != ERR_OK)
 			{
+				Dubug_info.pbuf_free_local = 4;
 				pbuf_free( p);
 //				printf("[%s] connect send chitic arp fail \n", netif->name);
 				Eth_Cnnect_info[i].status = CON_STATUS_IDLE;
@@ -155,12 +156,12 @@ int netif_connect( struct netif * netif, u16_t d_id)
 				}
 			}
 
-			delay(10);
+			delay(20);
 			if( Attempts > 100)
 				step ++;
 			break;
 		case 2:	//超时
-			printf(" can't recv arp reply !\n");
+			printf(" can't recv arp reply from %d !\n", d_id);
 			Attempts = 0;
 			step = 0;
 			for( i = 0; i < ARP_CACHE_NUM; i++)
@@ -190,39 +191,59 @@ err_t netif_linkoutput(struct netif *netif, struct pbuf *p)
 {
 	NetInterface *inet = (NetInterface *)netif->ll_netif;
 	int instance = inet->instance;
-	struct pbuf *iterator;
-
+	err_t ret = 0;
+	struct pbuf *p_iterator, *p_free;
 
 
 	if( !inet->linkState)
 	{
-		printf("[%s] %s can't send packet, because of linkstate is down \n", inet->name, __func__);
+//		printf("[%s] %s can't send packet, because of linkstate is down \n", inet->name, __func__);
 		return ERR_UNINITIALIZED;
 	}
 
 
 	pthread_mutex_lock( &TxPbuf_mutex[instance] );
 
-	//刷新缓存区
+	//刷新缓存区时会如此调用
 	if( p == NULL)
 	{
 		goto exit_output;
 
 	}
-	//这是第一个要加入发送队列的pbuf
-	if( Tx_pbuf[ inet->instance] == NULL)
+	ret = insert_node_to_listtail( (void **)&Tx_pbuf[ instance], p);
+	if( ret == ERR_CATASTROPHIC_ERR)
 	{
-		Tx_pbuf[ inet->instance] = p;
-		goto exit_output;
-	}
-	//从尾部加入新发送的pbuf
-	iterator = Tx_pbuf[ inet->instance];
-	while ( iterator->next != NULL)
-	{
-		iterator = iterator->next;
-	}
+		//发送链表出现了致命错误,清空发送链表，并释放内存
+		p_iterator = Tx_pbuf[ instance];
+		while ( p_iterator->next != NULL)
+		{
+			p_free = p_iterator;
+			p_iterator = p_iterator->next;
 
-	iterator->next = p;
+
+			if( p_free->ref > 0)
+			{
+				pbuf_free(p_free);
+			}
+		}
+	}
+//	//这是第一个要加入发送队列的pbuf
+//
+//	if( Tx_pbuf[ inet->instance] == NULL)
+//	{
+//		Tx_pbuf[ inet->instance] = p;
+//		goto exit_output;
+//	}
+//	//从尾部加入新发送的pbuf
+//	iterator = Tx_pbuf[ inet->instance];
+//	while ( iterator->next != NULL)
+//	{
+//		iterator = iterator->next;
+//	}
+//
+//	// 防止互指
+//	if( iterator != p)
+//		iterator->next = p;
 
 exit_output:
 	pthread_cond_signal( &Send_pbuf_cond[ instance]);
@@ -268,10 +289,15 @@ static void* send_pack_thread(void *arg)
 			if( inet->isr_status & ISR_PROCESSING)
 			{
 //				printf("the %s  ISR_PROCESSING... \n", inet->name);
+				delay_us = 100;
 				break;
 			}
 			pbuf_tmp = Tx_pbuf[ instance];
 
+//			if( pbuf_tmp == p_netif->reply_pbuf)
+//			{
+//				printf("%s send reply_pbuf \n",__func__);
+//			}
 			send_buffer.data = pbuf_tmp->payload;
 			send_buffer.len = pbuf_tmp->len;
 			ret = enc624j600Driver.SendPacket( inet, &send_buffer, 0);
@@ -279,12 +305,15 @@ static void* send_pack_thread(void *arg)
 			if( ret == ERR_OK)
 			{
 				Tx_pbuf[ instance] = pbuf_tmp->next;
+				Dubug_info.pbuf_free_local = 5;
 				pbuf_free( pbuf_tmp);
+
 
 			}
 			else
 			{
 				//此次发送失败，保留数据到下一次发送
+//				printf("%s send fail \n",__func__);
 				delay_us = 100;
 				break;
 			}
@@ -379,20 +408,34 @@ static void* isr_handle_thread(void *arg)
 			atomic_clr( &inet->isr_status, ISR_RECV_PACKET);
 //			TRACE_INFO("%s recv packet \r\n", inet->name);
 
-			inet->rxpbuf = pbuf_alloc( PBUF_RAW, p_netif->mtu, PBUF_RX_POOL);
 
-			///< 没有内存接收新数据，就强制回收最老的那个未处理的数据空间
+
+
 			if( inet->rxpbuf == NULL)
 			{
-				if( inet->rxUnprocessed)
+				inet->rxpbuf = pbuf_alloc( PBUF_RAW, p_netif->mtu, PBUF_RX_POOL);
+
+				///< 没有内存接收新数据，从保留的待处理数据中回收
+				if( inet->rxpbuf == NULL)
 				{
-					inet->rxpbuf = inet->rxUnprocessed;
-					inet->rxUnprocessed = inet->rxUnprocessed->next;
+					if( inet->rxUnprocessed)
+					{
+						inet->rxpbuf = inet->rxUnprocessed;
+						inet->rxUnprocessed = inet->rxUnprocessed->next;
+						Dubug_info.pbuf_free_local = 6;
+						pbuf_free(inet->rxpbuf);
+
+					}
+					else
+					{
+						///< 当有块板子快速发送时应用数据而本机还没有进入处理流程时会出现这个情况
+						///< 这种情况下，所有的接收pbuf都在接收处理队列中去了
+						p_netif->input(NULL, p_netif);			//释放部分缓存
+					}
+					inet->rxpbuf = pbuf_alloc( PBUF_RAW, p_netif->mtu, PBUF_RX_POOL);	//再次申请内存
+
 				}
-				else
-				{
-					///< todo 这种情况下，所有的接收pbuf都在接收处理队列中去了
-				}
+
 
 			}
 
@@ -402,7 +445,9 @@ static void* isr_handle_thread(void *arg)
 				inet->ethFrame = inet->rxpbuf->payload;
 			}
 			else
+			{
 				inet->ethFrame = NULL;
+			}
 			enc624j600Driver.EventHandler( inet);
 
 		}
@@ -415,7 +460,7 @@ static void* isr_handle_thread(void *arg)
 		if(  inet->isr_status & ISR_TRAN_COMPLETE)
 		{
 			atomic_clr( &inet->isr_status, ISR_TRAN_COMPLETE);
-
+			enc624j600Driver.EventHandler( inet);
 		}
 		if(  inet->isr_status & ISR_LINK_STATUS_CHG)
 		{
@@ -425,11 +470,12 @@ static void* isr_handle_thread(void *arg)
 				p_netif->link_callback( p_netif);
 
 		}
-		if(  inet->isr_status & ISR_ERROR)
+		if(  inet->isr_status & ISR_NONE)
 		{
-			atomic_clr( &inet->isr_status, ISR_ERROR);
+			atomic_clr( &inet->isr_status, ISR_NONE);
 			enc624j600Driver.EventHandler( inet);
-			printf(" ISR_ERROR happened \n");
+//			enc624j600_print_reg(inet,  ENC624J600_REG_ESTAT);
+//			printf(" ISR_ERROR happened \n");
 		}
 
 		pthread_cleanup_pop(0);

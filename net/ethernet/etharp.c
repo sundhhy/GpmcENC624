@@ -85,6 +85,7 @@ etharp_arp_input(struct netif *netif, struct eth_addr *ethaddr, struct pbuf *p)
 	}
 	ETHARP_STATS_INC(etharp.recv);
 
+
 	//自定义的协议。对于请求报文，目标id与本网络接口id一直，将发送方和接收方对换位置，然后应答
 	//对于应答报文，对比接收方MAC与本机MAC，将发送方MAC加入
 	if( hdr->proto == PP_HTONS(ETHTYPE_CHITIC))
@@ -93,37 +94,62 @@ etharp_arp_input(struct netif *netif, struct eth_addr *ethaddr, struct pbuf *p)
 		switch (chitic_hdr->opcode)
 		{
 			case PP_HTONS(ARP_REQUEST):
+//				printf("recv ARP_REQUEST \n");
 				if( chitic_hdr->d_id == netif->myid)
 				{
 					struct pbuf *reply_pbuf = (struct pbuf *)netif->reply_pbuf;
+
+
+
+
 					if( reply_pbuf == NULL)
 					{
 //						printf("reply_pbuf no buf: %s,%s,%d \n", __FILE__, __func__, __LINE__);
 //						break;
 						reply_pbuf = pbuf_alloc( PBUF_RAW,netif->mtu, PBUF_TX_POOL);
+						if( reply_pbuf == NULL)
+							break;
 						netif->reply_pbuf = reply_pbuf;
 
 					}
+
+					//上次的还没来得及发送，本次就放弃
+					if( reply_pbuf->ref > 1)
+					{
+						// 刷新发送缓存区
+						netif->linkoutput(netif, NULL);
+
+						break;
+					}
+
+					//清除掉上次加入发送链表中时下一节点可能残存的野指针
+					reply_pbuf->next = NULL;
 					//引用计算加1，防止在发送后，被释放掉。
 					reply_pbuf->ref ++;
-					reply_pbuf->len = p->len;
+					reply_pbuf->len = p->len - 4;			//以太网帧尾FCS(4B)不需要
 
 					//交换目标地址和源地址
 					ETHADDR16_COPY(&chitic_hdr->dhwaddr, &chitic_hdr->shwaddr);
 					ETHADDR16_COPY(&chitic_hdr->shwaddr, netif->hwaddr);
+					//以太网的目的地址改为接受的数据中的以太网源地址
+					//以太网的源地址改为本机地址
+					ETHADDR16_COPY(&ethhdr->dest, &ethhdr->src);
+					ETHADDR16_COPY(&ethhdr->src, netif->hwaddr);
+
 					chitic_hdr->d_id = chitic_hdr->s_id;
 					chitic_hdr->s_id = netif->myid;
 
 					chitic_hdr->opcode = htons(ARP_REPLY);
-					memcpy( reply_pbuf->payload, p->payload, p->len);
+					memcpy( reply_pbuf->payload, p->payload,reply_pbuf->len);
 					/* return ARP reply */
 					if( netif->linkoutput(netif, reply_pbuf))
 						reply_pbuf->ref --;
-
-					p->flags = PBUFFLAG_TRASH;
+//					else
+//						printf("send ARP_REPLY \n");
 				}
 				break;
 			case PP_HTONS(ARP_REPLY):
+//				printf("recv ARP_REPLY \n");
 				if( chitic_hdr->d_id == netif->myid)
 				{
 					int i = 0;
@@ -138,7 +164,6 @@ etharp_arp_input(struct netif *netif, struct eth_addr *ethaddr, struct pbuf *p)
 						}
 					}
 				}
-				p->flags = PBUFFLAG_TRASH;
 				break;
 			 default:
 			    LWIP_DEBUGF(ETHARP_DEBUG | LWIP_DBG_TRACE, ("etharp_arp_input: ARP unknown opcode type %"S16_F"\n", htons(hdr->opcode)));
@@ -147,6 +172,8 @@ etharp_arp_input(struct netif *netif, struct eth_addr *ethaddr, struct pbuf *p)
 
 		}
 	}
+
+	p->flags = PBUFFLAG_TRASH;
 }
 
 err_t

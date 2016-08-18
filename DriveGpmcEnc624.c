@@ -50,8 +50,9 @@ static int Net_connect_handle[2] = {-1, -1};
 static uint32_t	Recv_count[2];
 Sys_deginfo		Dubug_info;
 
-static uint8_t		*Send_buf, *Recv_buf;
+static uint8_t		*Send_buf, *Recv_buf, target,Is_Tx = 0;;
 static sem_t		sme_linkup[2];
+static bool			Net_linkdown[2] = {false};		//发生过断网事件
 
 struct netif	*NetIf[2];
 
@@ -150,7 +151,7 @@ int main(int argc, char *argv[])
 
 		uint16_t	fromid;
 
-		uint8_t		other;
+		uint8_t		netaddr;
 		uint8_t		*mac;
 		char		name[8] = "eth";
 		pid_t ds_rxid ;
@@ -160,13 +161,42 @@ int main(int argc, char *argv[])
 		struct timespec start_tm, now_tm;
 		double accum = 0.0;
 
+		printf("enter a even number netaddr : \n");
+		netaddr = getchar();
+		while( netaddr > '9' || netaddr < '0' )
+		{
+			netaddr = getchar();
+		}
+
+		netaddr -= '0' ;
+		printf("the netaddr is %d \n",netaddr);
+
+		printf("enter target netaddr : \n");
+		target = getchar();
+		while( target > '9' || target < '0' )
+		{
+			target = getchar();
+		}
+
+		target -= '0' ;
+		printf("the target is %d \n",target);
+
+		printf("Tx data (y/n): \n");
+		Is_Tx = getchar();
+		while( Is_Tx != 'y' && Is_Tx != 'n' )
+		{
+			Is_Tx = getchar();
+		}
+
+
+		printf("the target is %d \n",target);
 
 		sem_init( &sme_linkup[0], 0, 0);
 		sem_init( &sme_linkup[1], 0, 0);
 
 		///< 创建并初始化网络协议栈
 		CDS_Net[0] = NetAppObj_new();
-		CDS_Net[0]->netaddr = 0;
+		CDS_Net[0]->netaddr = netaddr;
 		CDS_Net[0]->num = 0;
 		sprintf(name,"eth0");
 		CDS_Net[0]->set_name( CDS_Net[0], name);
@@ -178,7 +208,7 @@ int main(int argc, char *argv[])
 			mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
 
 		CDS_Net[1] = NetAppObj_new();
-		CDS_Net[1]->netaddr = 1;
+		CDS_Net[1]->netaddr = netaddr + 1;
 		CDS_Net[1]->num = 1;
 		sprintf(name,"eth1");
 		CDS_Net[1]->linkstate_change_callback =  linkstate_change_callback;
@@ -204,12 +234,10 @@ int main(int argc, char *argv[])
 		///< 与对方建立连接
 
 		sem_wait(  &sme_linkup[0]);
-		ret = DS_Connect( CDS_Net[0], 1);
-//		while( ret  == ERR_UNKOWN)
-//		while( ret < 0)
-		while( ret  == ERR_UNKOWN)
+		ret = -1;
+		while( ret < 0)
 		{
-			ret = DS_Connect( CDS_Net[0], 1);
+			ret = DS_Connect( CDS_Net[0],target );
 		}
 		if( ret == ERR_TIMEOUT)
 		{
@@ -219,11 +247,10 @@ int main(int argc, char *argv[])
 			Ds_Hdl[0] = ret;
 
 		sem_wait(  &sme_linkup[1]);
-		ret = DS_Connect( CDS_Net[1], 0);
-		//		while( ret  == ERR_UNKOWN)
+		ret = -1;
 		while( ret < 0)
 		{
-			ret = DS_Connect( CDS_Net[1], 0);
+			ret = DS_Connect( CDS_Net[1], target + 1);
 		}
 		if( ret == ERR_TIMEOUT)
 		{
@@ -235,6 +262,8 @@ int main(int argc, char *argv[])
 		memset( Send_buf, 0, USER_DATA_MAX(mtu));
 		while( clock_gettime( CLOCK_REALTIME, &start_tm) == -1 )
 			  perror( "clock gettime" );
+
+
 
 
 		pthread_create ( &ds_rxid, NULL, CDS_recv_thread,NULL);
@@ -249,14 +278,19 @@ int main(int argc, char *argv[])
 
 				break;
 			}
-			ret = DSSendTo( Ds_Hdl[ i&1], Send_buf, USER_DATA_MAX(mtu));
+			if( Is_Tx == 'n')
+			{
+				sleep(1);
+				continue;
+			}
+			ret = DSSendTo( Ds_Hdl[ i & 1], Send_buf, USER_DATA_MAX(mtu));
 			if( ret == ERR_UNAVAILABLE)
 			{
 				delay(1);
-				send_fail[  i&1] ++;
+				send_fail[  i & 1] ++;
 				continue;
 			}
-			send_count[ i&1] ++;
+			send_count[ i & 1] ++;
 
 			if( i % 1000 == 0)
 			{
@@ -271,6 +305,24 @@ int main(int argc, char *argv[])
 
 			}
 			memset( Send_buf, DS_SendData, USER_DATA_MAX(mtu));
+
+			///< 网络发生过断开，就重新连接
+			if( Net_linkdown[i & 1])
+			{
+				DS_DisConnect(Ds_Hdl[ i & 1]);
+				sem_wait(  &sme_linkup[i & 1]);
+				ret = -1;
+				while( ret < 0)
+				{
+					ret = DS_Connect( CDS_Net[i & 1], target + (i & 1));
+				}
+				Ds_Hdl[ i & 1] = ret;
+				send_count[i & 1] = 0;
+				send_fail[i & 1] = 0;
+				Net_linkdown[i & 1] = false;
+
+			}
+//			delay(2000);
 
 		}
 
@@ -327,7 +379,6 @@ static void *CDS_recv_thread(void *arg)
 	double		accum = 0.0;
 	uint32_t sec = 0;
 	uint16_t	fromid;
-	uint16_t    other;
 	rx_mh_count[0] = MinuteHourCount_new();
 	rx_mh_count[1] = MinuteHourCount_new();
 	assert( rx_mh_count[0] != NULL);
@@ -345,19 +396,20 @@ static void *CDS_recv_thread(void *arg)
 		if( ret == USER_DATA_MAX(mtu))
 		{
 //				printf("[%d] %s recv %d data, vale is %d \n",i, CDS_Net[ other]->get_name(CDS_Net[ other]), \
-//						ret, Recv_buf[0]);
-			if( fromid == CDS_Net[0]->netaddr)
+						ret, Recv_buf[0]);
+			if( fromid == target)
 			{
-				other = 1;
-				recv_count[other] ++;
-				DS_SendData = Recv_buf[0] + 1;
+
+				recv_count[0] ++;
+
 			}
-			else if( fromid == CDS_Net[1]->netaddr)
+			else if( fromid == target + 1)
 			{
-				other = 0;
-				recv_count[other] ++;
-				DS_SendData = Recv_buf[0] + 1;
+
+				recv_count[1] ++;
+
 			}
+			DS_SendData = Recv_buf[0] + 1;
 
 		}
 		else
@@ -773,7 +825,14 @@ static void show_debug_info( Sys_deginfo *info)
 static void	linkstate_change_callback( NetAppObj *obj)
 {
 //	printf(" linkstate_change_callback \n");
-	if( obj->get_linkstate( obj))
+	bool state = obj->get_linkstate( obj);
+	if( state)
 		sem_post(  &sme_linkup[ obj->num]);
+	else
+	{
+		Net_linkdown[obj->num] = true;
+	}
+
+
 }
 

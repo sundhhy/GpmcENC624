@@ -203,6 +203,8 @@ typedef struct {
 	u8_t	rese[3];
 }connect_info;
 
+
+
 /** The list of network interfaces. */
 extern struct netif *netif_list;
 /** The default network interface. */

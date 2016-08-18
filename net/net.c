@@ -67,14 +67,14 @@ err_t nicProcessPacket( NetInterface * Inet, uint8_t *frame, int len)
 	struct pbuf *p_buf = ( struct pbuf *) ( Inet->rxpbuf);
 	struct netif *pnet = ( struct netif *) ( Inet->hl_netif);
 
+	//len > 0时，说明可能还会有后继数据
 	if( len)
 	{
 		p_buf->flags = PBUFFLAG_UNPROCESS;
 		p_buf->len = len;
 		ethernet_input( p_buf, pnet);
 
-		///< 本内存的数据还需要处理，则分配新的接收缓存用于接受
-		///< 已经处理好的缓存就用于接收后面的数据
+		///< 内存的数据还需要处理，则分配新的接收缓存用于接受
 		if( p_buf->flags != PBUFFLAG_TRASH)
 		{
 			Inet->rxpbuf = pbuf_alloc( PBUF_RAW, pnet->mtu, PBUF_RX_POOL);
@@ -88,15 +88,22 @@ err_t nicProcessPacket( NetInterface * Inet, uint8_t *frame, int len)
 				Inet->ethFrame = NULL;
 			}
 		}
+		///< 内存中的数据已经处理好，就直接继续用于接受新数据
 
 	}
-	else
-	{
-		///< 从网络芯片中已经无法读取更多的数据时，不需要继续接收了.
-		///< 回收已经处理掉的数据缓存
-		if( p_buf->flags == PBUFFLAG_TRASH)
-			pbuf_free( p_buf);
-	}
+//	else
+//	{
+//		///< 从网络芯片中已经无法读取更多的数据时，不需要继续接收了.
+//		///< 回收已经处理掉的数据缓存
+//		if( p_buf->flags != PBUFFLAG_TRASH)
+//		{
+//			Dubug_info.pbuf_free_local = 3;
+//			pbuf_free( p_buf);
+//			Inet->rxpbuf = NULL;
+//			Inet->ethFrame = NULL;
+//		}
+//
+//	}
 	return EXIT_SUCCESS;
 #endif
 }
@@ -115,7 +122,53 @@ int netBufferGetLength( const NetBuffer *net_buf)
 }
 
 
+/**
+ * @brief 向指定的头链表尾部插入一个节点.
+ *
+ * @details 当头链表是空的时候，将头链表指向新节点，否则将新节点添加到尾部。如果新节点已经在链表中存在了，就放弃插入该节点
+ *
+ * @param[in]	listhead 链表的头指针.
+ * @param[in]	newnode	带插入的节点
+ * @retval	ERR_OK	成功
+ * @retval	ERR_BAD_PARAMETER	新节点已经存在于链表中
+ * @warning	操作的链表节点对象的第一个元素必须是next，否则会出现不可预知的错误
+ * @warning	当新节点不是单节点时（newnode->next 不为NULL），函数不会去依次查找newnod这个链表其他节点是否已经存在在带插入的链表中
+ * @par 标识符
+ * 		保留
+ * @par 其它
+ * 		无
+ * @par 修改日志
+ * 		sundh于2016-08-17创建
+ */
+err_t insert_node_to_listtail(void **listhead, void *newnode)
+{
+	list_node	*p_itreator = *listhead;
 
+	if( newnode == NULL)
+		return ERR_BAD_PARAMETER;
 
+	if( *listhead == NULL)
+	{
+		*listhead = newnode;
+		return ERR_OK;
+	}
+
+	while( p_itreator->next != NULL)
+	{
+		if( p_itreator == newnode)
+			return ERR_BAD_PARAMETER;
+		p_itreator = p_itreator->next;
+		if( p_itreator == p_itreator->next)
+			return ERR_CATASTROPHIC_ERR;
+	}
+
+	p_itreator->next = newnode;
+	if( p_itreator == newnode)
+	{
+		printf("%s insert the same: %p - %p \n",p_itreator ,newnode);
+	}
+	return ERR_OK;
+
+}
 
 

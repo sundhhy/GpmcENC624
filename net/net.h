@@ -35,7 +35,7 @@
 #define		ISR_PROCESSING 		( 1 << 5)			//
 #define		ISR_RECV_ABORT		( 1 << 6)
 
-#define		ISR_ERROR ( 1 << 31)
+#define		ISR_NONE ( 1 << 31)
 
 typedef struct
 {
@@ -88,10 +88,15 @@ typedef struct
 
 }NetInterface;
 
+typedef struct {
+	void *next;
+
+}list_node;
+
 err_t macCompAddr( void *mac1, void *mac2);
 err_t nicNotifyLinkChange( NetInterface *Inet );
 err_t nicProcessPacket( NetInterface * Inet, uint8_t *frame, int len);
 
 int netBufferGetLength( const NetBuffer *net_buf);
-
+err_t insert_node_to_listtail(void **listhead, void *newnode);
 #endif /* NET_METHOD_H_ */
