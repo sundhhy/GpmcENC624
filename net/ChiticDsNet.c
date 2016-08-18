@@ -51,6 +51,7 @@ static uint16_t check_sum(uint16_t *buf, int len);
  * @param[in]	cthis 指向操作实体的指针.
  * @retval	ERR_OK	成功
  * @retval	ERR_MEM	内存不足
+ * @retval	ERR_BAD_PARAMETER	传入的初始化对象是错误的
  * @par 修改日志
  * 		sundh 于2016-08-03创建
  */
@@ -59,6 +60,8 @@ err_t net_init( NetAppObj *cthis)
 	uint16_t net_num = cthis->num;
 	static char fist_run = 1;
 	assert( net_num < NET_INSTANCE_NUM);
+	if( net_num > NET_INSTANCE_NUM)
+		return ERR_BAD_PARAMETER;
 
 	if( fist_run)
 	{
@@ -97,6 +100,8 @@ err_t net_destory( NetAppObj *cthis)
 {
 	uint16_t net_num = cthis->num;
 	assert( net_num < NET_INSTANCE_NUM);
+	if( net_num > NET_INSTANCE_NUM)
+			return ERR_BAD_PARAMETER;
 
 	netif_remove( NoPrvt[ net_num].netif);
 	free( NoPrvt[ net_num].netif);
@@ -133,6 +138,8 @@ uint8_t* get_mac(NetAppObj *cthis)
 void set_mac(NetAppObj *cthis, uint8_t *mac)
 {
 	assert( mac != NULL);
+	if( mac == NULL)
+		return ERR_BAD_PARAMETER;
 	memcpy( NoPrvt[ cthis->num].mac_addr, mac, NETIF_MAX_HWADDR_LEN);
 }
 
@@ -165,6 +172,8 @@ void set_name(NetAppObj *cthis, char *name)
 {
 	int i = 0;
 	assert( name != NULL);
+	if( name == NULL)
+		return ERR_BAD_PARAMETER;
 	for( i = 0; i < NET_NAME_LEN; i ++)
 	{
 		if( name[i] == '\0')
@@ -332,6 +341,8 @@ int DSRecvFrom( int hd_bitmap, void *buff, int len, uint16_t *fromid)
 	short	recv_len, i;
 	short	hit = 0;
 	assert( hd_bitmap > 0);
+	if( hd_bitmap < 1)
+		return ERR_BAD_PARAMETER;
 
 	if( hd_bitmap < 0)
 		return ERR_BAD_PARAMETER;
@@ -418,6 +429,8 @@ int DSSendTo( int hd_bitmap, void *buff, int len)
 
 	ChiticDSHdr *ds_hdr = NULL;
 	assert( hd_bitmap > 0);
+	if( hd_bitmap < 1)
+		return ERR_BAD_PARAMETER;
 	for( i = 0; i < DS_HANDLE_NUM; i++)
 	{
 		if( hd_bitmap & ( 1 << i))
@@ -435,8 +448,14 @@ int DSSendTo( int hd_bitmap, void *buff, int len)
 		return ERR_BAD_PARAMETER;
 
 	num = NetObj[ handle]->num;
-	assert( len <=  (  NoPrvt[ NetObj[ handle]->num].netif->mtu - PBUF_LINK_HLEN - 4 - DS_PRTC_HDRLEN));
 
+	assert( len <=  (  NoPrvt[ NetObj[ handle]->num].netif->mtu - PBUF_LINK_HLEN - 4 - DS_PRTC_HDRLEN));
+	if( len > (  NoPrvt[ NetObj[ handle]->num].netif->mtu - PBUF_LINK_HLEN - 4 - DS_PRTC_HDRLEN))
+	{
+		printf("send data %d > %d  \n ", len, \
+				(NoPrvt[ NetObj[ handle]->num].netif->mtu - PBUF_LINK_HLEN - 4 - DS_PRTC_HDRLEN));
+		return ERR_BAD_PARAMETER;
+	}
 	p_txbuf = pbuf_alloc( PBUF_LINK, len + DS_PRTC_HDRLEN, PBUF_TX_POOL);
 	if( p_txbuf != NULL)
 	{

@@ -322,7 +322,7 @@ int main(int argc, char *argv[])
 				Net_linkdown[i & 1] = false;
 
 			}
-//			delay(2000);
+			delay(2);
 
 		}
 

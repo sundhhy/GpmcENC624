@@ -153,6 +153,12 @@ err_t insert_node_to_listtail(void **listhead, void *newnode)
 		return ERR_OK;
 	}
 
+	if( (int)newnode % 4 != 0 || (int)p_itreator %4 != 0)	//
+	{
+		printf(" head(%p) or node(%p) address error  \n", p_itreator, newnode);
+		return ERR_BAD_PARAMETER;
+	}
+
 	while( p_itreator->next != NULL)
 	{
 		if( p_itreator == newnode)
