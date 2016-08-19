@@ -338,6 +338,7 @@ int DSRecvFrom( int hd_bitmap, void *buff, int len, uint16_t *fromid)
 	uint16_t	pbuf_left;
 
 	uint16_t	*hd_data;
+	char	*p = NULL;
 	short	recv_len, i;
 	short	hit = 0;
 	assert( hd_bitmap > 0);
@@ -391,7 +392,8 @@ int DSRecvFrom( int hd_bitmap, void *buff, int len, uint16_t *fromid)
 	recv_len = (recv_len < pbuf_left) ? recv_len : pbuf_left;
 	recv_len = (recv_len < len) ? recv_len : len;
 
-	memcpy( buff, ( void *)( ds_hdr + ds_hdr->head_len), recv_len);
+	p = (char *)ds_hdr + ds_hdr->head_len;
+	memcpy( buff, p, recv_len);
 	if( fromid)
 		*fromid = ds_hdr->src_addr;
 
@@ -509,24 +511,20 @@ static err_t input_fn(struct pbuf *p, struct netif *inp)
 			/* 未处理链表插入到处理链表	*/
 			if( inet->rxUnprocessed)
 			{
-				ret = insert_node_to_listtail( (void **)&RxPrcsHd, inet->rxUnprocessed);
+				//将pbuf的标志改写为处理中
+				p_iterator = inet->rxUnprocessed;
+				while( p_iterator->next != NULL)
+				{
 
+					p_iterator->flags = PBUFFLAG_DEALING;
+					p_iterator = p_iterator->next;
+				}
+				ret = insert_node_to_listtail( (void **)&RxPrcsHd, inet->rxUnprocessed);
 				inet->rxUnprocessed = NULL;
 			}
 
 			/* 新的数据插入到处理链表	*/
 			insert_node_to_listtail( (void **)&RxPrcsHd, p);
-
-
-
-			//将pbuf的标志改写为处理中
-			p_iterator = RxPrcsHd;
-			while( p_iterator->next != NULL)
-			{
-
-				p_iterator->flags = PBUFFLAG_DEALING;
-				p_iterator = p_iterator->next;
-			}
 
 		}
 		else

@@ -269,9 +269,11 @@ int main(int argc, char *argv[])
 		pthread_create ( &ds_rxid, NULL, CDS_recv_thread,NULL);
 
 		set_nonblock_flag( 0, 1);
+		DS_SendData = 0;
 		for( i = 0; ; i++)
 		{
 			opt = getchar();
+			memset( Send_buf, DS_SendData, USER_DATA_MAX(mtu));
 			if( opt == 'q')
 			{
 
@@ -304,7 +306,7 @@ int main(int argc, char *argv[])
 
 
 			}
-			memset( Send_buf, DS_SendData, USER_DATA_MAX(mtu));
+
 
 			///< 网络发生过断开，就重新连接
 			if( Net_linkdown[i & 1])
@@ -322,7 +324,8 @@ int main(int argc, char *argv[])
 				Net_linkdown[i & 1] = false;
 
 			}
-			delay(2);
+			DS_SendData ++;
+			delay(20);
 
 		}
 
@@ -332,8 +335,7 @@ int main(int argc, char *argv[])
 		pthread_cancel( ds_rxid);
 		pthread_join( ds_rxid, NULL);
 
-		err_out_5:
-			free(Recv_buf);
+
 		err_out_4:
 			free(Send_buf);
 		err_out_3:
@@ -379,6 +381,7 @@ static void *CDS_recv_thread(void *arg)
 	double		accum = 0.0;
 	uint32_t sec = 0;
 	uint16_t	fromid;
+	uint8_t		correct_data =0;
 	rx_mh_count[0] = MinuteHourCount_new();
 	rx_mh_count[1] = MinuteHourCount_new();
 	assert( rx_mh_count[0] != NULL);
@@ -409,7 +412,12 @@ static void *CDS_recv_thread(void *arg)
 				recv_count[1] ++;
 
 			}
-			DS_SendData = Recv_buf[0] + 1;
+			if( Recv_buf[0] != correct_data)
+			{
+				printf("recv data error: correct_data = %d, recv = %d \n", correct_data, Recv_buf[0]);
+			}
+			correct_data = Recv_buf[0] + 1;
+//			DS_SendData = Recv_buf[0] + 1;
 
 		}
 		else
