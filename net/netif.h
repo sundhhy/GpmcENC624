@@ -198,7 +198,6 @@ typedef struct {
 	u16_t	netid;
 	u8_t 	target_hwaddr[NETIF_MAX_HWADDR_LEN];
 
-	int		hits;			///< 使用频率。对已经建立的连接，每次发送时，发送的连接的hits加1，同时将其他连接的hits减1
 	u8_t	status;
 	u8_t	rese[3];
 }connect_info;

@@ -157,6 +157,7 @@ int main(int argc, char *argv[])
 		pid_t ds_rxid ;
 		uint64_t	send_count[2] = {0};
 		uint64_t	send_fail[2] = {0};
+		int 	delay_ms = 0;
 
 		struct timespec start_tm, now_tm;
 		double accum = 0.0;
@@ -188,8 +189,19 @@ int main(int argc, char *argv[])
 			Is_Tx = getchar();
 		}
 
+		if( Is_Tx == 'y')
+		{
+			printf("send data \n",target);
+			printf("Tx data delay time ms 0 - 9: \n");
+			delay_ms = getchar();
+			while( delay_ms > '9' || delay_ms < '0' )
+			{
+				delay_ms = getchar();
+			}
+			delay_ms -= '0';
+			printf("delay %d ms \n", delay_ms);
+		}
 
-		printf("the target is %d \n",target);
 
 		sem_init( &sme_linkup[0], 0, 0);
 		sem_init( &sme_linkup[1], 0, 0);
@@ -325,7 +337,8 @@ int main(int argc, char *argv[])
 
 			}
 			DS_SendData ++;
-			delay(20);
+			if( delay_ms)
+				delay(delay_ms);
 
 		}
 

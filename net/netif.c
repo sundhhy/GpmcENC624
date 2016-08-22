@@ -101,21 +101,11 @@ int netif_connect( struct netif * netif, u16_t d_id)
 				if( Eth_Cnnect_info[i].status == CON_STATUS_IDLE || Eth_Cnnect_info[i].netid == d_id)
 					break;
 			}
-			//找到使用率最低的那个连接，并替换掉
+			///< 句柄资源被用光了，直接返回资源不足错误
 			if( i == ARP_CACHE_NUM)
 			{
-				least_hits = Eth_Cnnect_info[0].hits;
-				for( i = 1; i < ARP_CACHE_NUM; i++)
-				{
-					if( Eth_Cnnect_info[i].hits < least_hits)
-					{
-						least_hits = Eth_Cnnect_info[i].hits;
-						least_idx = i;
-					}
-				}
 
-				i = least_idx;
-
+				return ERR_ABRT;
 			}
 
 			p = pbuf_alloc( PBUF_RAW, 64, PBUF_TX_POOL);

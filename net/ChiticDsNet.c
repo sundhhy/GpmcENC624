@@ -243,7 +243,7 @@ END_CTOR
  * @retval	大于等于0的整数 ： 连接已经成功建立,返回操作句柄.
  * @retval	ERR_UNKOWN: 连接过程还未完成。连接还不可用.
  * @retval  ERR_TIMEOUT : 建立建立超时退出.
- * @retval  ERR_UNAVAILABLE: 句柄资源不足
+ * @retval  ERR_UNAVAILABLE: 句柄资源不足，发生这种错误调用者应该去关闭某些连接
  * @attention 返回的句柄其实是个位图值。在本系统中，用int型来存储这个句柄，因此DS_HANDLE_NUM 要小于31。否则会超出int的范围。
  * @par 修改日志
  * 		sundh 于2016-08-03创建
@@ -255,13 +255,15 @@ int DS_Connect( NetAppObj *dsnet, uint16_t targetid)
 
 
 
-	//驱动发送过程中出现资源不足，就先延迟一段时间
+	//驱动发送过程中出现pbuf资源不足，就先延迟一段时间
 	if( ret == ERR_UNAVAILABLE)
 	{
 		delay(10);
 		return ERR_UNKOWN;
 	}
-	else if( ret < 0)
+	if( ret == ERR_ABRT)
+		return ERR_UNAVAILABLE;
+	if( ret < 0)
 		return ret;
 
 	//找到第一个未使用的句柄
