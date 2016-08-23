@@ -301,9 +301,8 @@ err_t DS_DisConnect( int hd_bitmap)
 	{
 		if( hd_bitmap & ( 1 << i))
 		{
-			if( NetObj[ i] == NULL)
-				continue;
-			netif_disconnect( NoPrvt[ NetObj[ i]->num].netif, ArpCacheIdx[ i] );
+
+			netif_disconnect(  ArpCacheIdx[ i] );
 			NetObj[ i] = NULL;
 		}
 	}

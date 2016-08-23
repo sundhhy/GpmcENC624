@@ -171,8 +171,10 @@ int netif_connect( struct netif * netif, u16_t d_id)
 	return ERR_UNKOWN;
 }
 
-int netif_disconnect( struct netif * netif, int idx)
+int netif_disconnect(  int idx)
 {
+	if( idx > ARP_CACHE_NUM)
+		return ERR_ERROR_INDEX;
 	Eth_Cnnect_info[idx].status = CON_STATUS_IDLE;
 	return ERR_OK;
 }
